@@ -1,39 +1,57 @@
-# Daily Cloud Photo — Backend API Specification
+# Daily Cloud Photo — API Reference
 
-バックエンドが満たすべき REST API 仕様。
-クラウドプロバイダーに依存しない統一インターフェース。
+REST API specification that all cloud provider backends must implement.
 
 ## Base URL
 
-管理者がデプロイ後に発行するエンドポイント URL。
-例: `https://api.example.com/v1`
+Endpoint URL generated after deployment.  
+Example: `https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/v1`
 
-## 認証
+## Authentication
 
-トークンベース認証。signin で取得した `accessToken` を以降のリクエストの
-`Authorization: Bearer <accessToken>` ヘッダーに付与する。
+Token-based authentication. Use the `accessToken` from signin response:
+```
+Authorization: Bearer <accessToken>
+```
 
 ---
 
-## エンドポイント一覧
+## Server Info
 
-### 認証
+### GET /info
 
-#### POST /auth/signup
+Returns server configuration. No authentication required.
 
-ユーザー登録。
+**Response 200:**
+```json
+{
+  "name": "Daily Cloud Photo Backend",
+  "version": "1.0.0",
+  "signupFields": ["username", "password", "email"],
+  "features": ["upload", "labels", "share-url", "label-sharing"]
+}
+```
+
+- `signupFields`: Fields required for signup (dynamic based on server config)
+- `features`: Enabled features. Possible values: `upload`, `labels`, `share-url`, `label-sharing`
+
+---
+
+## Auth
+
+### POST /auth/signup
+
+Register a new user.
 
 **Request Body:**
 ```json
 {
-  "username": "string",
-  "password": "string",
-  "email": "string (optional)",
-  "phone": "string (optional)"
+  "username": "string (required)",
+  "password": "string (required)",
+  "email": "string (required when server configured with RequireEmail=true)",
+  "phone": "string (required when server configured with RequirePhone=true)"
 }
 ```
-
-必須フィールドは管理者がバックエンド側で設定可能（例: 電話番号必須）。
 
 **Response 201:**
 ```json
@@ -43,9 +61,9 @@
 }
 ```
 
-#### POST /auth/confirm
+### POST /auth/confirm
 
-サインアップ後の確認コード検証。
+Confirm signup with verification code.
 
 **Request Body:**
 ```json
@@ -62,9 +80,9 @@
 }
 ```
 
-#### POST /auth/signin
+### POST /auth/signin
 
-ログイン。
+Sign in and receive tokens.
 
 **Request Body:**
 ```json
@@ -83,9 +101,9 @@
 }
 ```
 
-#### POST /auth/refresh
+### POST /auth/refresh
 
-トークンの更新。
+Refresh an expired access token.
 
 **Request Body:**
 ```json
@@ -102,17 +120,55 @@
 }
 ```
 
+### POST /auth/forgot-password
+
+Request a password reset code.
+
+**Request Body:**
+```json
+{
+  "username": "string"
+}
+```
+
+**Response 200:**
+```json
+{
+  "message": "Confirmation code sent."
+}
+```
+
+### POST /auth/reset-password
+
+Reset password with confirmation code.
+
+**Request Body:**
+```json
+{
+  "username": "string",
+  "confirmationCode": "string",
+  "newPassword": "string"
+}
+```
+
+**Response 200:**
+```json
+{
+  "message": "Password reset successful."
+}
+```
+
 ---
 
-### 写真
+## Photos
 
-#### GET /photos
+### GET /photos
 
-自分の写真一覧（メタデータ）を取得。
+List photos for the authenticated user. Includes shared photos from other users.
 
 **Query Parameters:**
 - `limit` (int, optional, default: 100)
-- `cursor` (string, optional) — ページネーション用
+- `cursor` (string, optional) — pagination cursor
 
 **Response 200:**
 ```json
@@ -124,24 +180,47 @@
       "contentType": "image/jpeg",
       "size": 1234567,
       "createdAt": "2025-01-01T00:00:00Z",
-      "thumbnailUrl": "string (presigned URL)",
-      "labels": ["family", "trip"]
+      "thumbnailUrl": "string (presigned URL, 1hr expiry)",
+      "fullUrl": "string (presigned URL, 1hr expiry)",
+      "labels": ["custom:123", "year:2025"],
+      "shared": false,
+      "sharedFrom": ""
     }
   ],
   "nextCursor": "string | null"
 }
 ```
 
-#### POST /photos/upload-url
+Shared photos have `"shared": true` and `"sharedFrom": "email@example.com"`.
 
-アップロード用の presigned URL を取得。
-アプリはこの URL に直接 PUT でファイルを送信する。
+### GET /photos/{id}
+
+Get a single photo's metadata and fresh presigned URLs.
+
+**Response 200:**
+```json
+{
+  "id": "string",
+  "filename": "string",
+  "contentType": "image/jpeg",
+  "size": 1234567,
+  "createdAt": "2025-01-01T00:00:00Z",
+  "fullUrl": "string (presigned URL)",
+  "thumbnailUrl": "string (presigned URL)"
+}
+```
+
+### POST /photos/upload-url
+
+Get a presigned URL for uploading a photo.
 
 **Request Body:**
 ```json
 {
   "filename": "IMG_20250101_120000.jpg",
-  "contentType": "image/jpeg"
+  "contentType": "image/jpeg",
+  "createdAt": "2025-01-01T12:00:00Z (optional)",
+  "photoId": "string (optional, for re-upload)"
 }
 ```
 
@@ -154,20 +233,9 @@
 }
 ```
 
-#### PUT {uploadUrl}
+### POST /photos/{id}/confirm
 
-presigned URL に対して画像バイナリを直接 PUT。
-（このリクエストはバックエンド API ではなくストレージに直接送信）
-
-**Headers:**
-- `Content-Type: image/jpeg`
-
-**Body:** 画像バイナリ
-
-#### POST /photos/{id}/confirm
-
-アップロード完了をバックエンドに通知。
-メタデータの確定やサムネイル生成のトリガーに使用。
+Confirm that upload to presigned URL is complete.
 
 **Response 200:**
 ```json
@@ -177,9 +245,28 @@ presigned URL に対して画像バイナリを直接 PUT。
 }
 ```
 
-#### DELETE /photos/{id}
+### PUT /photos/{id}/labels
 
-写真を削除。
+Update labels for a photo.
+
+**Request Body:**
+```json
+{
+  "labels": ["custom:123", "custom:456"]
+}
+```
+
+**Response 200:**
+```json
+{
+  "message": "Labels updated.",
+  "labels": ["custom:123", "custom:456"]
+}
+```
+
+### DELETE /photos/{id}
+
+Soft-delete a photo (marks as deleted, S3 data preserved).
 
 **Response 200:**
 ```json
@@ -190,42 +277,190 @@ presigned URL に対して画像バイナリを直接 PUT。
 
 ---
 
-### サーバー情報
+## Share Upload URL
 
-#### GET /info
+### POST /photos/share-upload-url
 
-サーバーの基本情報。接続テストにも使用。
+Generate a temporary upload page URL for third parties. Requires `share-url` feature enabled.
+
+**Request Body:**
+```json
+{
+  "expiresHours": 24
+}
+```
 
 **Response 200:**
 ```json
 {
-  "name": "Daily Cloud Photo Backend",
-  "version": "1.0.0",
-  "signupFields": ["username", "password", "email"],
-  "features": ["upload", "labels"]
+  "shareUrl": "https://api.example.com/v1/upload-page?token=uuid",
+  "token": "string",
+  "expiresHours": 24
 }
 ```
 
-`signupFields` でアプリ側がサインアップフォームを動的に構築できる。
+### GET /upload-page?token={token}
+
+Returns an HTML upload page. No authentication required. Token validated server-side.
+
+### POST /photos/share-upload
+
+Get a presigned URL using a share token (no auth required). Requires `share-url` feature enabled.
+
+**Request Body:**
+```json
+{
+  "token": "string",
+  "filename": "photo.jpg",
+  "contentType": "image/jpeg"
+}
+```
+
+**Response 200:**
+```json
+{
+  "uploadUrl": "string (presigned PUT URL)",
+  "photoId": "string"
+}
+```
 
 ---
 
-## エラーレスポンス
+## Label Sharing
 
-全エンドポイント共通。
+Requires `label-sharing` feature enabled.
 
+### POST /shares
+
+Create a label share request.
+
+**Request Body:**
 ```json
 {
-  "error": "string (error code)",
-  "message": "string (human readable)"
+  "toUsername": "recipient@example.com",
+  "labelId": "custom:123",
+  "labelName": "Family"
 }
 ```
 
-**HTTP ステータスコード:**
-- 400 — バリデーションエラー
-- 401 — 認証エラー（トークン無効・期限切れ）
-- 403 — 権限なし
-- 404 — リソースが見つからない
-- 409 — 競合（ユーザー名重複等）
-- 429 — レート制限
-- 500 — サーバーエラー
+**Response 201:**
+```json
+{
+  "message": "Share request created.",
+  "shareId": "string"
+}
+```
+
+### GET /shares/pending
+
+List pending (not yet accepted) share requests received.
+
+**Response 200:**
+```json
+{
+  "shares": [
+    {
+      "shareId": "string",
+      "fromUser": "sender@example.com",
+      "labelId": "custom:123",
+      "labelName": "Family",
+      "createdAt": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### GET /shares
+
+List accepted shares (labels shared with you).
+
+**Response 200:**
+```json
+{
+  "shares": [
+    {
+      "shareId": "string",
+      "fromUser": "sender@example.com",
+      "fromUserId": "string",
+      "labelId": "custom:123",
+      "labelName": "Family",
+      "createdAt": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### GET /shares/sent
+
+List shares you have sent to others.
+
+**Response 200:**
+```json
+{
+  "shares": [
+    {
+      "shareId": "string",
+      "toUser": "recipient@example.com",
+      "labelId": "custom:123",
+      "labelName": "Family",
+      "status": "active",
+      "createdAt": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### POST /shares/{shareId}/accept
+
+Accept a pending share request.
+
+**Response 200:**
+```json
+{
+  "message": "Share accepted."
+}
+```
+
+### POST /shares/{shareId}/reject
+
+Reject a pending share request.
+
+**Response 200:**
+```json
+{
+  "message": "Share rejected."
+}
+```
+
+### DELETE /shares/{shareId}
+
+Remove a share (works for both sender and receiver). Bidirectional cleanup.
+
+**Response 200:**
+```json
+{
+  "message": "Share removed."
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints return errors in this format:
+
+```json
+{
+  "error": "ErrorCode",
+  "message": "Human readable description"
+}
+```
+
+**HTTP Status Codes:**
+- 400 — Validation error
+- 401 — Authentication error (invalid/expired token)
+- 403 — Forbidden (feature disabled, token expired)
+- 404 — Resource not found
+- 409 — Conflict (e.g. username already exists)
+- 429 — Rate limited
+- 500 — Server error

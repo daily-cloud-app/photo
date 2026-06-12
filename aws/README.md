@@ -1,109 +1,86 @@
 # Daily Cloud Photo — AWS Backend
 
-## ワンクリックデプロイ
+## One-Click Deploy
 
-LambdaCodeBucket を空欄にすると、GitHub Releases から自動的にコードをダウンロードしてデプロイします。
+Leave `LambdaCodeBucket` empty and the template will automatically download code from GitHub Releases.
 
-[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=daily-cloud-photo&templateURL=https://raw.githubusercontent.com/daily-cloud-app/photo-infra/main/template.yaml)
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=daily-cloud-photo&templateURL=https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/template.yaml)
 
-> **注意**: 上記ボタンはテンプレートが公開リポジトリにホストされている場合に使用できます。
-> それ以外の場合は、下記の手動手順に従ってください。
+> **Note**: The button above works when the template is hosted in a public repository.
+> Otherwise, download `template.yaml` and upload it manually.
 
-### クイックスタート（手動）
+### Quick Start
 
-1. AWS コンソール → **CloudFormation** → **スタックの作成**
-2. `template.yaml` をアップロード
-3. パラメータ:
-   - `LambdaCodeBucket`: **空欄のまま**（GitHub から自動ダウンロード）
-   - その他はデフォルトでOK
-4. 「IAM リソースが作成される場合があることを承認」にチェック
-5. **作成** をクリック
-6. 完了後、**出力** タブの `ApiEndpoint` をアプリに入力
+1. AWS Console → **CloudFormation** → **Create stack**
+2. Upload `template.yaml`
+3. Parameters:
+   - `LambdaCodeBucket`: **Leave empty** (auto-downloads from GitHub)
+   - Other parameters: defaults are fine
+4. Check "I acknowledge that AWS CloudFormation might create IAM resources"
+5. Click **Create stack**
+6. After completion, go to **Outputs** tab → copy `ApiEndpoint` URL into the app
 
 ---
 
-## パラメータ一覧
+## Parameters
 
-| パラメータ | デフォルト | 説明 |
-|-----------|-----------|------|
-| AppName | `daily-cloud-photo` | リソース名のプレフィックス |
-| RequireEmail | `true` | サインアップ時にメール必須 |
-| RequirePhone | `false` | サインアップ時に電話番号必須 |
-| PhotosBucketName | (自動生成) | 写真用 S3 バケット名 |
-| LambdaCodeBucket | (空欄) | 空欄=GitHub自動DL / 指定=手動アップロード |
-| LambdaCodeKey | `daily-cloud-photo/lambda.zip` | Lambda ZIP の S3 キー |
-| GitHubReleaseUrl | (最新リリース) | Lambda ZIP のダウンロード元URL |
-| EnableShareUrl | `true` | アップロードURL共有機能 |
-| EnableLabelSharing | `true` | ラベル共有機能 |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| AppName | `daily-cloud-photo` | Prefix for all resource names |
+| RequireEmail | `true` | Require email for signup |
+| RequirePhone | `false` | Require phone number for signup |
+| PhotosBucketName | (auto-generated) | S3 bucket name for photos |
+| LambdaCodeBucket | (empty) | Empty = auto-download from GitHub / Set = manual upload |
+| LambdaCodeKey | `daily-cloud-photo/lambda.zip` | S3 key for Lambda ZIP |
+| GitHubReleaseUrl | (latest release) | URL to download Lambda ZIP |
+| EnableShareUrl | `true` | Enable upload URL sharing feature |
+| EnableLabelSharing | `true` | Enable label sharing between users |
 
-## 手動デプロイ（上級者向け）
+## Connecting the App
 
-### 1. Lambda コードを S3 にアップロード
+1. Open Drawer → **Settings** → Enter the endpoint URL → **Save**
+2. Run **Connection Test**
+3. Drawer → **Login** → Create account
 
-1. `lambda/index.py` と `lambda/s3_trigger.py` を ZIP にまとめる
-2. 任意の S3 バケットにアップロード
-3. CloudFormation パラメータの `LambdaCodeBucket` にバケット名を指定
+## Deleting the Stack
 
-### 2. CloudFormation でスタックを作成
+1. Empty the **S3 bucket** (photos) including versioned objects
+2. **CloudFormation** → Stack → **Delete**
 
-1. `template.yaml` をアップロード
-2. パラメータを入力
-3. 「IAM リソースが作成される場合があることを承認」にチェック
-4. **作成** をクリック
-
-### 3. エンドポイント URL を確認
-
-スタック作成完了後、**出力** タブの `ApiEndpoint` がアプリ接続先URL。
+## Architecture
 
 ```
-例: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/v1
+User → API Gateway (HTTP API) → Lambda (unified handler)
+                                    ├── Cognito (auth)
+                                    ├── S3 (photo storage + thumbnails)
+                                    ├── DynamoDB (metadata)
+                                    └── S3 Trigger Lambda (EXIF + thumbnail generation)
 ```
 
-## アプリでの接続
+- Single Lambda handles all API routes (path-based routing)
+- User photos isolated under `users/{cognito_sub}/` prefix
+- Direct upload to S3 via presigned URLs (no Lambda proxy)
+- S3 trigger automatically extracts EXIF date + generates thumbnails
 
-1. Drawer → **設定** → エンドポイント URL を入力 → **保存**
-2. **接続テスト** で確認
-3. Drawer → **ログイン** からアカウント作成
+## Cost Estimate
 
-## 削除
+All services are pay-per-use. Low usage typically falls within AWS Free Tier.
 
-1. **S3 バケット**（写真用）を空にする（バージョニング含む）
-2. **CloudFormation** → スタック → **削除**
+| Service | Free Tier |
+|---------|-----------|
+| Lambda | 1M requests/month |
+| API Gateway | 1M requests/month |
+| DynamoDB | 25GB + 25 WCU/RCU |
+| S3 | 5GB (12 months) |
+| Cognito | 50,000 MAU |
 
-## アーキテクチャ
+## Security Recommendations for Production
 
-```
-ユーザー → API Gateway (HTTP API) → Lambda (統合ハンドラー)
-                                        ├── Cognito (認証)
-                                        ├── S3 (写真保存 + サムネイル)
-                                        ├── DynamoDB (メタデータ)
-                                        └── S3 Trigger Lambda (EXIF + サムネイル生成)
-```
+The template includes basic security (S3 public access block, token expiration checks).
+For production use, also consider:
 
-- 全 API を1つの Lambda で処理（パスベースルーティング）
-- ユーザーの写真は `users/{cognito_sub}/` プレフィックスで分離
-- presigned URL で S3 に直接アップロード
-- S3 トリガーで自動的に EXIF 解析 + DynamoDB 登録
-
-## コスト目安
-
-すべて従量課金。少人数であれば AWS 無料枠内。
-
-| サービス | 無料枠 |
-|----------|--------|
-| Lambda | 月100万リクエスト |
-| API Gateway | 月100万リクエスト |
-| DynamoDB | 25GB + 25WCU/25RCU |
-| S3 | 5GB（12ヶ月間） |
-| Cognito | 月50,000 MAU |
-
-## 本番運用時のセキュリティ推奨事項
-
-テンプレートには基本的なセキュリティ（S3パブリックアクセスブロック、トークン有効期限チェック）が含まれています。
-本番運用する場合は以下も検討してください:
-
-- **API Gatewayスロットリング**: ステージ設定でレート制限を追加（認証総当り攻撃対策）
-- **WAF**: API Gatewayの前にWAFを配置（悪意あるリクエストのブロック）
-- **CORSの制限**: `AllowOrigins` を特定ドメインに限定
-- **CloudTrail**: API呼び出しの監査ログ有効化
-- **IAMロール最小権限化**: 不要なアクション（`Scan` 等）の除去
+- **API Gateway throttling**: Add rate limits to prevent brute-force attacks
+- **WAF**: Place WAF in front of API Gateway to block malicious requests
+- **CORS restriction**: Limit `AllowOrigins` to specific domains
+- **CloudTrail**: Enable API call audit logging
+- **IAM least privilege**: Remove unnecessary actions (e.g. `Scan`)

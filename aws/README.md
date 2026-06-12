@@ -84,3 +84,4 @@ For production use, also consider:
 - **CORS restriction**: Limit `AllowOrigins` to specific domains
 - **CloudTrail**: Enable API call audit logging
 - **IAM least privilege**: Remove unnecessary actions (e.g. `Scan`)
+- **Share URL limits**: Consider adding file size limits, upload count limits, and Content-Type validation for share upload tokens

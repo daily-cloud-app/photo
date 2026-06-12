@@ -1,58 +1,73 @@
-# Daily Cloud Photo — AWS Backend デプロイ手順
+# Daily Cloud Photo — AWS Backend
 
-AWS コンソールのみで完結する手順です。CLI は不要です。
+## ワンクリックデプロイ
 
-## 手順
+LambdaCodeBucket を空欄にすると、GitHub Releases から自動的にコードをダウンロードしてデプロイします。
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=daily-cloud-photo&templateURL=https://raw.githubusercontent.com/daily-cloud-app/photo-infra/main/template.yaml)
+
+> **注意**: 上記ボタンはテンプレートが公開リポジトリにホストされている場合に使用できます。
+> それ以外の場合は、下記の手動手順に従ってください。
+
+### クイックスタート（手動）
+
+1. AWS コンソール → **CloudFormation** → **スタックの作成**
+2. `template.yaml` をアップロード
+3. パラメータ:
+   - `LambdaCodeBucket`: **空欄のまま**（GitHub から自動ダウンロード）
+   - その他はデフォルトでOK
+4. 「IAM リソースが作成される場合があることを承認」にチェック
+5. **作成** をクリック
+6. 完了後、**出力** タブの `ApiEndpoint` をアプリに入力
+
+---
+
+## パラメータ一覧
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| AppName | `daily-cloud-photo` | リソース名のプレフィックス |
+| RequireEmail | `true` | サインアップ時にメール必須 |
+| RequirePhone | `false` | サインアップ時に電話番号必須 |
+| PhotosBucketName | (自動生成) | 写真用 S3 バケット名 |
+| LambdaCodeBucket | (空欄) | 空欄=GitHub自動DL / 指定=手動アップロード |
+| LambdaCodeKey | `daily-cloud-photo/lambda.zip` | Lambda ZIP の S3 キー |
+| GitHubReleaseUrl | (最新リリース) | Lambda ZIP のダウンロード元URL |
+| EnableShareUrl | `true` | アップロードURL共有機能 |
+| EnableLabelSharing | `true` | ラベル共有機能 |
+
+## 手動デプロイ（上級者向け）
 
 ### 1. Lambda コードを S3 にアップロード
 
-1. `infra/aws/lambda/index.py` を **ZIP ファイル**にする
-   - Windows: `index.py` を右クリック → 送る → 圧縮（zip 形式）フォルダー
-   - ZIP 内のファイル名が `index.py` であること（フォルダを挟まない）
-2. AWS コンソール → **S3** → 任意のバケットを選択（なければ作成）
-3. ZIP ファイルをアップロード
-4. **バケット名**と**キー（パス）**をメモ
-   - 例: バケット `my-deploy-bucket`、キー `daily-cloud-photo/lambda.zip`
+1. `lambda/index.py` と `lambda/s3_trigger.py` を ZIP にまとめる
+2. 任意の S3 バケットにアップロード
+3. CloudFormation パラメータの `LambdaCodeBucket` にバケット名を指定
 
 ### 2. CloudFormation でスタックを作成
 
-1. AWS コンソール → **CloudFormation** → **スタックの作成**
-2. 「テンプレートファイルのアップロード」を選択
-3. `infra/aws/template.yaml` をアップロード
-4. パラメータを入力:
-
-| パラメータ | 説明 | 例 |
-|-----------|------|-----|
-| AppName | リソース名のプレフィックス | `daily-cloud-photo` |
-| RequireEmail | サインアップ時にメール必須 | `true` |
-| RequirePhone | サインアップ時に電話番号必須 | `false` |
-| PhotosBucketName | 写真用 S3 バケット名（空欄で自動生成） | （空欄） |
-| LambdaCodeBucket | 手順1でアップロードした S3 バケット名 | `my-deploy-bucket` |
-| LambdaCodeKey | 手順1でアップロードした ZIP のキー | `daily-cloud-photo/lambda.zip` |
-
-5. 「AWS CloudFormation によって IAM リソースが作成される場合があることを承認します」にチェック
-6. **スタックの作成** をクリック
+1. `template.yaml` をアップロード
+2. パラメータを入力
+3. 「IAM リソースが作成される場合があることを承認」にチェック
+4. **作成** をクリック
 
 ### 3. エンドポイント URL を確認
 
-1. スタック作成完了後、**出力** タブを開く
-2. `ApiEndpoint` の値がアプリに入力する URL
+スタック作成完了後、**出力** タブの `ApiEndpoint` がアプリ接続先URL。
 
 ```
 例: https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/v1
 ```
 
-### 4. アプリで接続
+## アプリでの接続
 
-1. アプリの Drawer → **設定** を開く
-2. エンドポイント URL を入力 → **保存**
-3. **接続テスト** で確認
-4. Drawer → **ログイン** からアカウント作成・ログイン
+1. Drawer → **設定** → エンドポイント URL を入力 → **保存**
+2. **接続テスト** で確認
+3. Drawer → **ログイン** からアカウント作成
 
 ## 削除
 
-1. **S3 バケット**（写真用）を空にする
-   - S3 → バケット → 「空にする」
+1. **S3 バケット**（写真用）を空にする（バージョニング含む）
 2. **CloudFormation** → スタック → **削除**
 
 ## アーキテクチャ
@@ -60,23 +75,35 @@ AWS コンソールのみで完結する手順です。CLI は不要です。
 ```
 ユーザー → API Gateway (HTTP API) → Lambda (統合ハンドラー)
                                         ├── Cognito (認証)
-                                        ├── S3 (写真保存)
-                                        └── DynamoDB (メタデータ)
+                                        ├── S3 (写真保存 + サムネイル)
+                                        ├── DynamoDB (メタデータ)
+                                        └── S3 Trigger Lambda (EXIF + サムネイル生成)
 ```
 
 - 全 API を1つの Lambda で処理（パスベースルーティング）
 - ユーザーの写真は `users/{cognito_sub}/` プレフィックスで分離
-- presigned URL で S3 に直接アップロード（Lambda を経由しない）
+- presigned URL で S3 に直接アップロード
+- S3 トリガーで自動的に EXIF 解析 + DynamoDB 登録
 
 ## コスト目安
 
-すべて従量課金のサービスを使用しています。
-少人数・少量利用であれば AWS 無料枠内に収まる可能性が高いです。
+すべて従量課金。少人数であれば AWS 無料枠内。
 
 | サービス | 無料枠 |
 |----------|--------|
 | Lambda | 月100万リクエスト |
 | API Gateway | 月100万リクエスト |
-| DynamoDB | 25GB + 月25WCU/25RCU |
+| DynamoDB | 25GB + 25WCU/25RCU |
 | S3 | 5GB（12ヶ月間） |
 | Cognito | 月50,000 MAU |
+
+## 本番運用時のセキュリティ推奨事項
+
+テンプレートには基本的なセキュリティ（S3パブリックアクセスブロック、トークン有効期限チェック）が含まれています。
+本番運用する場合は以下も検討してください:
+
+- **API Gatewayスロットリング**: ステージ設定でレート制限を追加（認証総当り攻撃対策）
+- **WAF**: API Gatewayの前にWAFを配置（悪意あるリクエストのブロック）
+- **CORSの制限**: `AllowOrigins` を特定ドメインに限定
+- **CloudTrail**: API呼び出しの監査ログ有効化
+- **IAMロール最小権限化**: 不要なアクション（`Scan` 等）の除去

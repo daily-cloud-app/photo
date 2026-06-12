@@ -31,16 +31,35 @@ Parameters:
 
   LambdaCodeBucket:
     Type: String
-    Description: S3 bucket containing the Lambda code ZIP
+    Default: ''
+    Description: S3 bucket containing the Lambda code ZIP (leave empty for auto-bootstrap from GitHub)
 
   LambdaCodeKey:
     Type: String
     Default: 'daily-cloud-photo/lambda.zip'
     Description: S3 key for the Lambda code ZIP file
 
+  GitHubReleaseUrl:
+    Type: String
+    Default: 'https://github.com/daily-cloud-app/photo-infra/releases/latest/download/lambda.zip'
+    Description: URL to download Lambda ZIP from GitHub Releases (used when LambdaCodeBucket is empty)
+
+  EnableShareUrl:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable share upload URL feature
+
+  EnableLabelSharing:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable label sharing between users
+
 Conditions:
   UseCustomBucketName: !Not [!Equals [!Ref PhotosBucketName, '']]
   EmailRequired: !Equals [!Ref RequireEmail, 'true']
+  NeedsBootstrap: !Equals [!Ref LambdaCodeBucket, '']
 
 # ============================================================
 # Resources
@@ -89,6 +108,101 @@ Resources:
         IdToken: hours
         RefreshToken: days
 
+  # ── S3 (Deploy — auto-created for Lambda code storage) ──
+
+  DeployBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupOldZips
+            Status: Enabled
+            ExpirationInDays: 90
+
+  # ── Bootstrap Lambda (downloads ZIP from GitHub to S3) ──
+
+  BootstrapFunctionRole:
+    Type: AWS::IAM::Role
+    Condition: NeedsBootstrap
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub '${DeployBucket.Arn}/*'
+
+  BootstrapFunction:
+    Type: AWS::Lambda::Function
+    Condition: NeedsBootstrap
+    Properties:
+      FunctionName: !Sub '${AppName}-bootstrap'
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !GetAtt BootstrapFunctionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import urllib.request
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+              try:
+                  if event['RequestType'] == 'Delete':
+                      bucket = event['ResourceProperties']['Bucket']
+                      key = event['ResourceProperties']['Key']
+                      boto3.client('s3').delete_object(Bucket=bucket, Key=key)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+
+                  url = event['ResourceProperties']['SourceUrl']
+                  bucket = event['ResourceProperties']['Bucket']
+                  key = event['ResourceProperties']['Key']
+
+                  req = urllib.request.Request(url)
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      data = resp.read()
+
+                  boto3.client('s3').put_object(
+                      Bucket=bucket,
+                      Key=key,
+                      Body=data,
+                  )
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                      'Bucket': bucket,
+                      'Key': key,
+                  })
+              except Exception as e:
+                  print(f'Error: {e}')
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  BootstrapInvocation:
+    Type: Custom::BootstrapLambda
+    Condition: NeedsBootstrap
+    Properties:
+      ServiceToken: !GetAtt BootstrapFunction.Arn
+      SourceUrl: !Ref GitHubReleaseUrl
+      Bucket: !Ref DeployBucket
+      Key: !Ref LambdaCodeKey
+
   # ── S3 (Photos) ──
 
   PhotosBucket:
@@ -98,6 +212,11 @@ Resources:
         - UseCustomBucketName
         - !Ref PhotosBucketName
         - !Ref 'AWS::NoValue'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
       CorsConfiguration:
@@ -112,6 +231,15 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: 'users/'
+            Function: !GetAtt S3TriggerFunction.Arn
 
   # ── DynamoDB ──
 
@@ -131,6 +259,13 @@ Resources:
           KeyType: HASH
         - AttributeName: photoId
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: photoId-index
+          KeySchema:
+            - AttributeName: photoId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
 
   # ── IAM Role for Lambda ──
 
@@ -155,10 +290,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminGetUser
                   - cognito-idp:SignUp
                   - cognito-idp:ConfirmSignUp
                   - cognito-idp:InitiateAuth
                   - cognito-idp:GetUser
+                  - cognito-idp:ListUsers
                 Resource: !GetAtt CognitoUserPool.Arn
               - Effect: Allow
                 Action:
@@ -175,14 +312,18 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:GetItem
                   - dynamodb:Query
+                  - dynamodb:Scan
                   - dynamodb:DeleteItem
                   - dynamodb:UpdateItem
-                Resource: !GetAtt PhotosTable.Arn
+                Resource:
+                  - !GetAtt PhotosTable.Arn
+                  - !Sub '${PhotosTable.Arn}/index/*'
 
   # ── Lambda ──
 
   ApiFunction:
     Type: AWS::Lambda::Function
+    DependsOn: BootstrapInvocation
     Properties:
       FunctionName: !Sub '${AppName}-api'
       Runtime: python3.12
@@ -191,7 +332,7 @@ Resources:
       MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
+        S3Bucket: !If [NeedsBootstrap, !Ref DeployBucket, !Ref LambdaCodeBucket]
         S3Key: !Ref LambdaCodeKey
       Environment:
         Variables:
@@ -201,6 +342,8 @@ Resources:
           PHOTOS_TABLE: !Ref PhotosTable
           REQUIRE_EMAIL: !Ref RequireEmail
           REQUIRE_PHONE: !Ref RequirePhone
+          ENABLE_SHARE_URL: !Ref EnableShareUrl
+          ENABLE_LABEL_SHARING: !Ref EnableLabelSharing
 
   # Lambda に API Gateway からの呼び出しを許可
   ApiFunctionPermission:
@@ -215,6 +358,7 @@ Resources:
 
   S3TriggerFunction:
     Type: AWS::Lambda::Function
+    DependsOn: BootstrapInvocation
     Properties:
       FunctionName: !Sub '${AppName}-s3-trigger'
       Runtime: python3.12
@@ -223,7 +367,7 @@ Resources:
       MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
+        S3Bucket: !If [NeedsBootstrap, !Ref DeployBucket, !Ref LambdaCodeBucket]
         S3Key: !Ref LambdaCodeKey
       Environment:
         Variables:

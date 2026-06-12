@@ -1,7 +1,7 @@
 """
-S3 イベントトリガー:
-1. ファイルが PUT されたら DynamoDB にメタデータを自動登録
-2. サムネイル画像（200px）を生成して thumbnails/ に保存
+S3 Event Trigger:
+1. When a file is PUT, automatically registers metadata in DynamoDB
+2. Generates a thumbnail image (200px) and saves to thumbnails/ prefix
 """
 import io
 import os
@@ -26,11 +26,11 @@ def handler(event, context):
         key = urllib.parse.unquote_plus(record['s3']['object']['key'])
         size = record['s3']['object'].get('size', 0)
 
-        # thumbnails/ プレフィックスのファイルは無視（無限ループ防止）
+        # Ignore thumbnails/ prefix files (prevent infinite loop)
         if key.startswith('thumbnails/'):
             continue
 
-        # パスから userId を抽出
+        # Extract userId from path
         parts = key.split('/')
         if len(parts) < 3 or parts[0] != 'users':
             continue
@@ -38,7 +38,7 @@ def handler(event, context):
         user_id = parts[1]
         photo_id = parts[-1]
 
-        # 拡張子からコンテンツタイプを推定
+        # Infer content type from extension
         ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
         content_type_map = {
             'jpg': 'image/jpeg',
@@ -51,7 +51,7 @@ def handler(event, context):
         }
         content_type = content_type_map.get(ext, 'application/octet-stream')
 
-        # サムネイル生成 + EXIF から撮影日時を取得
+        # Generate thumbnail + extract capture date from EXIF
         thumbnail_key = f"thumbnails/{key.removeprefix('users/')}"
         exif_date = None
         try:
@@ -63,13 +63,13 @@ def handler(event, context):
             print(f'Thumbnail generation failed for {key}: {e}')
             thumbnail_key = None
 
-        # 撮影日時: EXIF > 現在時刻
+        # Capture date: EXIF > current time
         created_at = exif_date if exif_date else datetime.now(timezone.utc).isoformat()
 
-        # DynamoDB にメタデータを登録/更新
+        # Register/update metadata in DynamoDB
         existing = table.get_item(Key={'userId': user_id, 'photoId': photo_id})
         if 'Item' in existing:
-            # 既存レコードがあれば thumbnailKey を更新
+            # Update thumbnailKey if record already exists
             update_expr = 'SET #s = :status, #sz = :size'
             expr_names = {'#s': 'status', '#sz': 'size'}
             expr_values = {':status': 'uploaded', ':size': size}
@@ -83,7 +83,7 @@ def handler(event, context):
                 ExpressionAttributeValues=expr_values,
             )
         else:
-            # 新規登録（S3 に直接入れた場合）
+            # New registration (for files uploaded directly to S3)
             item = {
                 'userId': user_id,
                 'photoId': photo_id,
@@ -103,13 +103,13 @@ def handler(event, context):
 
 
 def _generate_thumbnail_and_get_date(bucket, source_key, thumbnail_key):
-    """S3 から画像を取得してサムネイルを生成し、EXIF から撮影日時を返す"""
+    """Fetch image from S3, generate thumbnail, and return capture date from EXIF"""
     response = s3_client.get_object(Bucket=bucket, Key=source_key)
     image_data = response['Body'].read()
 
     img = Image.open(io.BytesIO(image_data))
 
-    # EXIF から撮影日時を取得
+    # Extract capture date from EXIF
     exif_date = None
     try:
         exif = img.getexif()
@@ -123,7 +123,7 @@ def _generate_thumbnail_and_get_date(bucket, source_key, thumbnail_key):
     except Exception as e:
         print(f'EXIF extraction failed: {e}')
 
-    # サムネイル生成
+    # Generate thumbnail
     img.thumbnail(THUMBNAIL_SIZE, Image.LANCZOS)
 
     buffer = io.BytesIO()

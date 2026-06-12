@@ -41,7 +41,7 @@ Parameters:
 
   GitHubReleaseUrl:
     Type: String
-    Default: 'https://github.com/daily-cloud-app/photo-infra/releases/latest/download/lambda.zip'
+    Default: 'https://github.com/daily-cloud-app/photo/releases/latest/download/lambda.zip'
     Description: URL to download Lambda ZIP from GitHub Releases (used when LambdaCodeBucket is empty)
 
   EnableShareUrl:
@@ -345,7 +345,7 @@ Resources:
           ENABLE_SHARE_URL: !Ref EnableShareUrl
           ENABLE_LABEL_SHARING: !Ref EnableLabelSharing
 
-  # Lambda に API Gateway からの呼び出しを許可
+  # Allow API Gateway to invoke Lambda
   ApiFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -400,7 +400,7 @@ Resources:
       StageName: v1
       AutoDeploy: true
 
-  # Lambda 統合
+  # Lambda Integration
   HttpApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -409,7 +409,7 @@ Resources:
       IntegrationUri: !GetAtt ApiFunction.Arn
       PayloadFormatVersion: '2.0'
 
-  # 全リクエストを Lambda にルーティング
+  # Route all requests to Lambda
   HttpApiDefaultRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:

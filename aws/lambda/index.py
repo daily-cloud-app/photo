@@ -1,6 +1,6 @@
 """
-Daily Cloud Photo — 統合 Lambda ハンドラー
-API Gateway HTTP API からのリクエストをパスベースでルーティング
+Daily Cloud Photo — Unified Lambda Handler
+Routes requests from API Gateway HTTP API based on path
 """
 import json
 import os
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import boto3
 from boto3.dynamodb.conditions import Key
 
-# ── 環境変数 ──
+# ── Environment Variables ──
 USER_POOL_ID = os.environ.get('USER_POOL_ID', '')
 USER_POOL_CLIENT_ID = os.environ.get('USER_POOL_CLIENT_ID', '')
 PHOTOS_BUCKET = os.environ.get('PHOTOS_BUCKET', '')
@@ -21,7 +21,7 @@ ENABLE_SHARE_URL = os.environ.get('ENABLE_SHARE_URL', 'true') == 'true'
 ENABLE_LABEL_SHARING = os.environ.get('ENABLE_LABEL_SHARING', 'true') == 'true'
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-northeast-1')
 
-# ── AWS クライアント ──
+# ── AWS Clients ──
 from botocore.config import Config as BotoConfig
 
 cognito = boto3.client('cognito-idp')
@@ -35,7 +35,7 @@ dynamodb = boto3.resource('dynamodb')
 
 
 # ============================================================
-# ヘルパー
+# Helpers
 # ============================================================
 
 def _table():
@@ -85,7 +85,7 @@ def _prefix(uid):
 
 
 # ============================================================
-# ルーティング
+# Routing
 # ============================================================
 
 def handler(event, context):
@@ -94,7 +94,7 @@ def handler(event, context):
     method = http.get('method', 'GET').upper()
     path = http.get('path', '/')
 
-    # /v1 プレフィックスを除去
+    # Strip /v1 prefix
     if path.startswith('/v1'):
         path = path[3:]
 
@@ -326,7 +326,7 @@ def _forgot_password(event):
         )
         return _ok(200, {'message': 'Confirmation code sent.'})
     except cognito.exceptions.UserNotFoundException:
-        # セキュリティ上、ユーザーが存在しなくても同じレスポンスを返す
+        # For security, return the same response even if user does not exist
         return _ok(200, {'message': 'Confirmation code sent.'})
     except cognito.exceptions.LimitExceededException:
         return _err(429, 'Too many requests. Please try again later.', 'LimitExceeded')
@@ -392,20 +392,20 @@ def _photos_list(event):
 
     photos = []
     for item in items:
-        # deleted は除外
+        # Exclude deleted items
         if item.get('status') == 'deleted':
             continue
-        # share_token レコードは除外（写真ではない）
+        # Exclude share_token records (not photos)
         if item.get('photoId', '').startswith('share_token:'):
             continue
-        # share: レコードは除外（共有メタデータ）
+        # Exclude share: records (sharing metadata)
         if item.get('photoId', '').startswith('share:'):
             continue
-        # sent_share: レコードは除外（送信済み共有メタデータ）
+        # Exclude sent_share: records (sent sharing metadata)
         if item.get('photoId', '').startswith('sent_share:'):
             continue
 
-        # サムネイルキーがあればサムネイルの URL を返す
+        # Return thumbnail URL if thumbnail key exists
         thumbnail_key = item.get('thumbnailKey')
         s3_key = item.get('s3Key', f"{_prefix(uid)}{item['photoId']}")
 
@@ -413,13 +413,13 @@ def _photos_list(event):
         full_url = None
 
         try:
-            # フルサイズ URL
+            # Full-size URL
             full_url = s3.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': PHOTOS_BUCKET, 'Key': s3_key},
                 ExpiresIn=3600,
             )
-            # サムネイル URL
+            # Thumbnail URL
             if thumbnail_key:
                 thumbnail_url = s3.generate_presigned_url(
                     'get_object',
@@ -447,7 +447,7 @@ def _photos_list(event):
     if lk:
         nc = lk.get('photoId')
 
-    # 共有された写真も追加
+    # Also include shared photos
     from boto3.dynamodb.conditions import Attr
     print(f'[Shares] Querying shared items for user {uid}')
     shared_result = t.query(
@@ -462,7 +462,7 @@ def _photos_list(event):
         if not from_uid or not label_id:
             continue
 
-        # 共有元ユーザーの写真でそのラベルが付いているものを取得
+        # Get photos from the sharing user that have the specified label
         shared_photos = t.query(
             KeyConditionExpression=Key('userId').eq(from_uid),
         )
@@ -525,13 +525,13 @@ def _upload_url(event):
     filename = b.get('filename', '')
     ct = b.get('contentType', 'image/jpeg')
     created_at = b.get('createdAt', datetime.now(timezone.utc).isoformat())
-    # アプリから photoId が送られたらそれを使う（再アップロード時に上書き）
+    # Use photoId from the app if provided (overwrite on re-upload)
     photo_id = b.get('photoId', '') or str(uuid.uuid4())
 
     if not filename:
         return _err(400, 'filename is required')
 
-    # S3 パスに日付を含める: users/{sub}/2026/04/26/{photoId}
+    # Include date in S3 path: users/{sub}/2026/04/26/{photoId}
     try:
         dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
     except Exception:
@@ -572,7 +572,7 @@ def _photos_confirm(event, path):
     if not uid:
         return _err(401, 'Authentication required')
 
-    # /photos/{photoId}/confirm からIDを抽出
+    # Extract ID from /photos/{photoId}/confirm
     parts = path.strip('/').split('/')
     photo_id = parts[1] if len(parts) >= 3 else ''
     if not photo_id:
@@ -679,7 +679,7 @@ def _photos_delete(event, path):
     if not item:
         return _err(404, 'Photo not found')
 
-    # 論理削除: ステータスを deleted に変更（S3 のデータはバージョニングで保持）
+    # Soft delete: change status to deleted (S3 data retained via versioning)
     t.update_item(
         Key={'userId': uid, 'photoId': photo_id},
         UpdateExpression='SET #s = :status, deletedAt = :now',
@@ -702,7 +702,7 @@ def _photos_update_labels(event, path):
     if not uid:
         return _err(401, 'Authentication required')
 
-    # /photos/{photoId}/labels からIDを抽出
+    # Extract ID from /photos/{photoId}/labels
     parts = path.strip('/').split('/')
     photo_id = parts[1] if len(parts) >= 3 else ''
     if not photo_id:
@@ -743,11 +743,11 @@ def _share_upload_url(event):
     b = _body(event)
     expires_hours = int(b.get('expiresHours', 24))
 
-    # トークンを生成
+    # Generate token
     token = str(uuid.uuid4())
     expires_at = datetime.now(timezone.utc).isoformat()
 
-    # DynamoDB にトークンを保存（share_tokens テーブルの代わりに photos テーブルに特殊レコード）
+    # Save token to DynamoDB (special record in photos table instead of share_tokens table)
     _table().put_item(Item={
         'userId': uid,
         'photoId': f'share_token:{token}',
@@ -757,7 +757,7 @@ def _share_upload_url(event):
         'labels': [],
     })
 
-    # アップロードページの URL を生成
+    # Generate upload page URL
     rc = event.get('requestContext', {})
     domain = rc.get('domainName', '')
     stage = rc.get('stage', 'v1')
@@ -783,7 +783,7 @@ def _upload_page(event):
     if not token:
         return _html_response(400, '<h1>Invalid link</h1>')
 
-    # トークンを検証（GSI query で高速取得）
+    # Validate token (fast lookup via GSI query)
     t = _table()
     result = t.query(
         IndexName='photoId-index',
@@ -796,7 +796,7 @@ def _upload_page(event):
 
     item = items[0]
 
-    # 有効期限チェック
+    # Expiration check
     created_at = item.get('createdAt', '')
     expires_hours = int(item.get('expiresHours', 24))
     try:
@@ -808,7 +808,7 @@ def _upload_page(event):
 
     uid = item['userId']
 
-    # presigned URL を生成（複数ファイル対応のため、アップロード時に個別生成）
+    # Generate presigned URL (generated individually per upload to support multiple files)
     rc = event.get('requestContext', {})
     domain = rc.get('domainName', '')
     stage = rc.get('stage', 'v1')
@@ -901,7 +901,7 @@ def _upload_page(event):
                 const pct = Math.round(((success + failed) / selectedFiles.length) * 100);
                 statusDiv.innerHTML = `<div class="status progress">アップロード中... (${{success + failed + 1}}/${{selectedFiles.length}})<div class="progress-bar"><div class="progress-bar-fill" style="width:${{pct}}%"></div></div></div>`;
                 try {{
-                    // presigned URL を取得
+                    // Get presigned URL
                     const res = await fetch('{api_base}/photos/share-upload', {{
                         method: 'POST',
                         headers: {{ 'Content-Type': 'application/json' }},
@@ -910,7 +910,7 @@ def _upload_page(event):
                     const data = await res.json();
                     if (!data.uploadUrl) throw new Error('No upload URL');
 
-                    // S3 にアップロード
+                    // Upload to S3
                     const putRes = await fetch(data.uploadUrl, {{
                         method: 'PUT',
                         headers: {{ 'Content-Type': file.type }},
@@ -956,7 +956,7 @@ def _html_response(status_code, html):
 # ============================================================
 
 def _share_upload(event):
-    """トークンベースでpresigned URLを発行（第三者用）"""
+    """Issue presigned URL via token (for third-party users)"""
     if not ENABLE_SHARE_URL:
         return _err(403, 'Share URL feature is disabled')
     b = _body(event)
@@ -967,7 +967,7 @@ def _share_upload(event):
     if not token or not filename:
         return _err(400, 'token and filename are required')
 
-    # トークンを検証（GSI query で高速取得）
+    # Validate token (fast lookup via GSI query)
     t = _table()
     result = t.query(
         IndexName='photoId-index',
@@ -980,7 +980,7 @@ def _share_upload(event):
 
     item = items[0]
 
-    # 有効期限チェック
+    # Expiration check
     created_at = item.get('createdAt', '')
     expires_hours = int(item.get('expiresHours', 24))
     try:
@@ -992,7 +992,7 @@ def _share_upload(event):
 
     uid = item['userId']
 
-    # presigned URL を生成
+    # Generate presigned URL
     photo_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     date_path = f"{now.year}/{now.month:02d}/{now.day:02d}"
@@ -1004,7 +1004,7 @@ def _share_upload(event):
         ExpiresIn=3600,
     )
 
-    # DynamoDB への登録は S3 trigger が自動で行う
+    # DynamoDB registration is handled automatically by S3 trigger
 
     return _ok(200, {
         'uploadUrl': url,
@@ -1017,7 +1017,7 @@ def _share_upload(event):
 # ============================================================
 
 def _create_share(event):
-    """POST /shares — 共有リクエスト作成"""
+    """POST /shares — Create a share request"""
     if not ENABLE_LABEL_SHARING:
         return _err(403, 'Label sharing feature is disabled')
     uid = _user_id(event)
@@ -1025,14 +1025,14 @@ def _create_share(event):
         return _err(401, 'Authentication required')
 
     b = _body(event)
-    to_username = b.get('toUsername', '').strip()  # 共有先のメールアドレス
+    to_username = b.get('toUsername', '').strip()  # Email address of the recipient
     label_id = b.get('labelId', '').strip()
     label_name = b.get('labelName', '').strip()
 
     if not to_username or not label_id:
         return _err(400, 'toUsername and labelId are required')
 
-    # 共有先ユーザーの sub を取得
+    # Get the recipient user's sub
     try:
         resp = cognito.admin_get_user(
             UserPoolId=USER_POOL_ID,
@@ -1053,11 +1053,11 @@ def _create_share(event):
     if to_uid == uid:
         return _err(400, 'Cannot share with yourself')
 
-    # 共有レコードを作成
+    # Create share record
     share_id = str(uuid.uuid4())
     t = _table()
 
-    # 共有先ユーザーのレコードとして保存
+    # Save as a record for the recipient user
     t.put_item(Item={
         'userId': to_uid,
         'photoId': f'share:{share_id}',
@@ -1071,7 +1071,7 @@ def _create_share(event):
         'labels': [],
     })
 
-    # 送信者側にもレコードを保存（送信済み共有の管理用）
+    # Also save a record for the sender (for managing sent shares)
     t.put_item(Item={
         'userId': uid,
         'photoId': f'sent_share:{share_id}',
@@ -1092,7 +1092,7 @@ def _create_share(event):
 
 
 def _pending_shares(event):
-    """GET /shares/pending — 未承諾の共有リクエスト一覧"""
+    """GET /shares/pending — List pending share requests"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1118,7 +1118,7 @@ def _pending_shares(event):
 
 
 def _sent_shares(event):
-    """GET /shares/sent — 自分が送った共有一覧"""
+    """GET /shares/sent — List shares sent by the current user"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1144,7 +1144,7 @@ def _sent_shares(event):
 
 
 def _list_shares(event):
-    """GET /shares — 承諾済みの共有一覧"""
+    """GET /shares — List accepted shares"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1171,7 +1171,7 @@ def _list_shares(event):
 
 
 def _accept_share(event, path):
-    """POST /shares/{shareId}/accept — 共有を承諾"""
+    """POST /shares/{shareId}/accept — Accept a share"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1196,7 +1196,7 @@ def _accept_share(event, path):
 
 
 def _reject_share(event, path):
-    """POST /shares/{shareId}/reject — 共有を拒否"""
+    """POST /shares/{shareId}/reject — Reject a share"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1212,7 +1212,7 @@ def _reject_share(event, path):
 
 
 def _delete_share(event, path):
-    """DELETE /shares/{shareId} — 共有を解除（送信者 or 受信者どちらからでも）"""
+    """DELETE /shares/{shareId} — Remove a share (from either sender or receiver)"""
     uid = _user_id(event)
     if not uid:
         return _err(401, 'Authentication required')
@@ -1222,24 +1222,24 @@ def _delete_share(event, path):
 
     t = _table()
 
-    # 受信者として削除（share:xxx）
+    # Delete as receiver (share:xxx)
     receiver_key = {'userId': uid, 'photoId': f'share:{share_id}'}
     receiver_result = t.get_item(Key=receiver_key)
     if 'Item' in receiver_result:
         from_uid = receiver_result['Item'].get('fromUser', '')
         t.delete_item(Key=receiver_key)
-        # 送信者側のレコードも削除
+        # Also delete the sender's record
         if from_uid:
             t.delete_item(Key={'userId': from_uid, 'photoId': f'sent_share:{share_id}'})
         return _ok(200, {'message': 'Share removed.'})
 
-    # 送信者として削除（sent_share:xxx）
+    # Delete as sender (sent_share:xxx)
     sender_key = {'userId': uid, 'photoId': f'sent_share:{share_id}'}
     sender_result = t.get_item(Key=sender_key)
     if 'Item' in sender_result:
         to_uid = sender_result['Item'].get('toUser', '')
         t.delete_item(Key=sender_key)
-        # 受信者側のレコードも削除
+        # Also delete the receiver's record
         if to_uid:
             t.delete_item(Key={'userId': to_uid, 'photoId': f'share:{share_id}'})
         return _ok(200, {'message': 'Share removed.'})
@@ -1248,7 +1248,7 @@ def _delete_share(event, path):
 
 
 def _get_username(uid):
-    """ユーザーIDからメールアドレスを取得"""
+    """Get email address from user ID"""
     try:
         resp = cognito.list_users(
             UserPoolId=USER_POOL_ID,

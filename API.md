@@ -5,7 +5,7 @@ REST API specification that all cloud provider backends must implement.
 ## Base URL
 
 Endpoint URL generated after deployment.  
-Example: `https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/v1`
+Example: `https://your-api-endpoint.example.com/v1`
 
 ## Authentication
 

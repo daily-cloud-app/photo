@@ -1,0 +1,198 @@
+#!/bin/bash
+# ============================================================
+# Daily Cloud Photo — GCP One-Command Deployment Script
+# Deploys Cloud Functions, Cloud Storage, and Firestore
+# ============================================================
+set -e
+
+# ── Configuration ──
+PROJECT_ID="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+REGION="${GCP_REGION:-asia-northeast1}"
+BUCKET_NAME="${PHOTOS_BUCKET:-${PROJECT_ID}-photos}"
+FUNCTION_NAME="daily-cloud-photo-api"
+TRIGGER_FUNCTION_NAME="daily-cloud-photo-storage-trigger"
+FIREBASE_API_KEY="${FIREBASE_API_KEY:-}"
+
+# Feature toggles
+REQUIRE_EMAIL="${REQUIRE_EMAIL:-true}"
+REQUIRE_PHONE="${REQUIRE_PHONE:-false}"
+ENABLE_SHARE_URL="${ENABLE_SHARE_URL:-true}"
+ENABLE_LABEL_SHARING="${ENABLE_LABEL_SHARING:-true}"
+
+# ── Colors ──
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}============================================================${NC}"
+echo -e "${BLUE}  Daily Cloud Photo — GCP Deployment${NC}"
+echo -e "${BLUE}============================================================${NC}"
+echo ""
+
+# ── Validate prerequisites ──
+echo -e "${YELLOW}[1/7] Checking prerequisites...${NC}"
+
+if ! command -v gcloud &> /dev/null; then
+    echo -e "${RED}ERROR: gcloud CLI is not installed.${NC}"
+    echo "Install from: https://cloud.google.com/sdk/docs/install"
+    exit 1
+fi
+
+if [ -z "$PROJECT_ID" ]; then
+    echo -e "${RED}ERROR: No GCP project configured.${NC}"
+    echo "Run: gcloud config set project YOUR_PROJECT_ID"
+    exit 1
+fi
+
+echo -e "  Project: ${GREEN}${PROJECT_ID}${NC}"
+echo -e "  Region:  ${GREEN}${REGION}${NC}"
+echo -e "  Bucket:  ${GREEN}${BUCKET_NAME}${NC}"
+echo ""
+
+# ── Enable required APIs ──
+echo -e "${YELLOW}[2/7] Enabling required APIs...${NC}"
+gcloud services enable \
+    cloudfunctions.googleapis.com \
+    cloudbuild.googleapis.com \
+    firestore.googleapis.com \
+    storage.googleapis.com \
+    identitytoolkit.googleapis.com \
+    run.googleapis.com \
+    eventarc.googleapis.com \
+    --project="${PROJECT_ID}" \
+    --quiet
+
+echo -e "  ${GREEN}✓ APIs enabled${NC}"
+echo ""
+
+# ── Create Firestore database (if not exists) ──
+echo -e "${YELLOW}[3/7] Setting up Firestore...${NC}"
+if gcloud firestore databases describe --project="${PROJECT_ID}" 2>/dev/null; then
+    echo -e "  ${GREEN}✓ Firestore already exists${NC}"
+else
+    gcloud firestore databases create \
+        --location="${REGION}" \
+        --project="${PROJECT_ID}" \
+        --quiet 2>/dev/null || echo -e "  ${GREEN}✓ Firestore already configured${NC}"
+fi
+echo ""
+
+# ── Create Cloud Storage bucket ──
+echo -e "${YELLOW}[4/7] Setting up Cloud Storage...${NC}"
+if gsutil ls -b "gs://${BUCKET_NAME}" 2>/dev/null; then
+    echo -e "  ${GREEN}✓ Bucket already exists${NC}"
+else
+    gsutil mb -l "${REGION}" -p "${PROJECT_ID}" "gs://${BUCKET_NAME}"
+    echo -e "  ${GREEN}✓ Bucket created${NC}"
+fi
+
+# Enable versioning for soft-delete support
+gsutil versioning set on "gs://${BUCKET_NAME}"
+
+# Set CORS for browser uploads
+cat > /tmp/cors.json << 'EOF'
+[
+  {
+    "origin": ["*"],
+    "method": ["GET", "PUT", "POST", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Authorization"],
+    "maxAgeSeconds": 3600
+  }
+]
+EOF
+gsutil cors set /tmp/cors.json "gs://${BUCKET_NAME}"
+rm -f /tmp/cors.json
+
+echo -e "  ${GREEN}✓ Bucket configured with versioning and CORS${NC}"
+echo ""
+
+# ── Get Firebase API Key (if not set) ──
+echo -e "${YELLOW}[5/7] Checking Firebase configuration...${NC}"
+if [ -z "$FIREBASE_API_KEY" ]; then
+    echo -e "  ${YELLOW}⚠ FIREBASE_API_KEY not set.${NC}"
+    echo -e "  The signin/refresh endpoints require this key."
+    echo -e "  Set it in the Firebase Console → Project Settings → Web API Key"
+    echo -e "  Then redeploy with: FIREBASE_API_KEY=your-key ./deploy.sh"
+    echo ""
+    FIREBASE_API_KEY="NOT_SET"
+fi
+echo -e "  ${GREEN}✓ Firebase check complete${NC}"
+echo ""
+
+# ── Deploy main API function ──
+echo -e "${YELLOW}[6/7] Deploying main API function...${NC}"
+gcloud functions deploy "${FUNCTION_NAME}" \
+    --gen2 \
+    --runtime=python312 \
+    --region="${REGION}" \
+    --source=. \
+    --entry-point=main_handler \
+    --trigger-http \
+    --allow-unauthenticated \
+    --memory=256MB \
+    --timeout=60s \
+    --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID},FIREBASE_API_KEY=${FIREBASE_API_KEY},REQUIRE_EMAIL=${REQUIRE_EMAIL},REQUIRE_PHONE=${REQUIRE_PHONE},ENABLE_SHARE_URL=${ENABLE_SHARE_URL},ENABLE_LABEL_SHARING=${ENABLE_LABEL_SHARING}" \
+    --project="${PROJECT_ID}" \
+    --quiet
+
+API_URL=$(gcloud functions describe "${FUNCTION_NAME}" --region="${REGION}" --gen2 --format='value(serviceConfig.uri)' --project="${PROJECT_ID}")
+echo -e "  ${GREEN}✓ API function deployed${NC}"
+echo ""
+
+# ── Deploy storage trigger function ──
+echo -e "${YELLOW}[7/7] Deploying storage trigger function...${NC}"
+
+# Grant Eventarc permissions to the default compute service account
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+SA_EMAIL="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+# Grant required roles for Eventarc
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/eventarc.eventReceiver" \
+    --quiet 2>/dev/null || true
+
+# Grant Cloud Storage pubsub publishing
+GCS_SA=$(gsutil kms serviceaccount -p "${PROJECT_ID}")
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GCS_SA}" \
+    --role="roles/pubsub.publisher" \
+    --quiet 2>/dev/null || true
+
+gcloud functions deploy "${TRIGGER_FUNCTION_NAME}" \
+    --gen2 \
+    --runtime=python312 \
+    --region="${REGION}" \
+    --source=. \
+    --entry-point=storage_trigger_handler \
+    --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
+    --trigger-event-filters="bucket=${BUCKET_NAME}" \
+    --memory=512MB \
+    --timeout=120s \
+    --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID}" \
+    --project="${PROJECT_ID}" \
+    --quiet
+
+echo -e "  ${GREEN}✓ Storage trigger function deployed${NC}"
+echo ""
+
+# ── Summary ──
+echo -e "${BLUE}============================================================${NC}"
+echo -e "${GREEN}  Deployment Complete!${NC}"
+echo -e "${BLUE}============================================================${NC}"
+echo ""
+echo -e "  API Endpoint: ${GREEN}${API_URL}${NC}"
+echo ""
+echo -e "  Test with:"
+echo -e "    curl ${API_URL}/info"
+echo ""
+echo -e "  Configure the app:"
+echo -e "    Open Drawer → Settings → Enter endpoint URL → Save"
+echo ""
+if [ "$FIREBASE_API_KEY" = "NOT_SET" ]; then
+    echo -e "  ${YELLOW}⚠ Remember to set FIREBASE_API_KEY and redeploy for auth to work.${NC}"
+    echo ""
+fi
+echo -e "${BLUE}============================================================${NC}"

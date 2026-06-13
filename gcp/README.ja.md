@@ -6,75 +6,14 @@
 
 ---
 
-## 前提条件
-
-1. **Google Cloud SDK** (`gcloud`) がインストール・認証済みであること
-2. 課金が有効な GCP プロジェクト
-3. 必要な API の有効化:
-   ```bash
-   gcloud services enable \
-     cloudfunctions.googleapis.com \
-     cloudbuild.googleapis.com \
-     firestore.googleapis.com \
-     storage.googleapis.com \
-     identitytoolkit.googleapis.com \
-     run.googleapis.com
-   ```
-4. 同じ GCP プロジェクトにリンクされた **Firebase プロジェクト**（Firebase Auth 用）
-5. **Firestore** をネイティブモードで初期化:
-   ```bash
-   gcloud firestore databases create --location=asia-northeast1
-   ```
-
----
-
 ## クイックデプロイ
 
-### オプション A: デプロイスクリプト（ワンコマンド）
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### オプション B: 手動デプロイ
-
-```bash
-# 変数の設定
-export PROJECT_ID=$(gcloud config get-value project)
-export REGION=asia-northeast1
-export BUCKET_NAME=${PROJECT_ID}-photos
-
-# Cloud Storage バケットの作成
-gsutil mb -l ${REGION} gs://${BUCKET_NAME}
-gsutil versioning set on gs://${BUCKET_NAME}
-
-# メイン API 関数のデプロイ
-gcloud functions deploy daily-cloud-photo-api \
-  --gen2 \
-  --runtime=python312 \
-  --region=${REGION} \
-  --source=. \
-  --entry-point=main_handler \
-  --trigger-http \
-  --allow-unauthenticated \
-  --memory=256MB \
-  --timeout=60s \
-  --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID},REQUIRE_EMAIL=true,REQUIRE_PHONE=false,ENABLE_SHARE_URL=true,ENABLE_LABEL_SHARING=true"
-
-# ストレージトリガー関数のデプロイ
-gcloud functions deploy daily-cloud-photo-storage-trigger \
-  --gen2 \
-  --runtime=python312 \
-  --region=${REGION} \
-  --source=. \
-  --entry-point=storage_trigger_handler \
-  --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
-  --trigger-event-filters="bucket=${BUCKET_NAME}" \
-  --memory=512MB \
-  --timeout=120s \
-  --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID}"
-```
+1. 上記の **Open in Cloud Shell** ボタンをクリック
+2. デプロイスクリプトを実行:
+   ```bash
+   chmod +x deploy.sh && ./deploy.sh
+   ```
+3. 出力から API エンドポイント URL をコピー
 
 ---
 
@@ -94,13 +33,9 @@ gcloud functions deploy daily-cloud-photo-storage-trigger \
 
 ## アプリでの接続
 
-1. デプロイ完了後、出力から関数の URL をコピー:
-   ```
-   https://{REGION}-{PROJECT_ID}.cloudfunctions.net/daily-cloud-photo-api
-   ```
-2. ドロワー → **設定** → エンドポイント URL を入力 → **保存**
-3. **接続テスト** で確認
-4. ドロワー → **ログイン** からアカウント作成
+4. ドロワー → **設定** → エンドポイント URL を貼り付け → **保存**
+5. **接続テスト** で確認
+6. ドロワー → **ログイン** からアカウント作成
 
 ---
 

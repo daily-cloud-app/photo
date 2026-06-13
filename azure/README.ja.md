@@ -6,61 +6,18 @@
 
 ---
 
-## 前提条件
-
-- Azure サブスクリプション（[無料アカウント](https://azure.microsoft.com/free/)）
-- Azure CLI (`az` コマンド) がインストール済み — [インストールガイド](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
-- （オプション）Azure Functions Core Tools — [インストールガイド](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local)
-- Python 3.11+（ローカル開発用）
-
----
-
 ## クイックデプロイ
 
-### オプション A: Azure Portal（ワンクリック）
-
 1. 上記の **Deploy to Azure** ボタンをクリック
-2. パラメータを入力（デフォルトのままでOK）
-3. **確認および作成** → **作成** をクリック
-4. デプロイ完了後（約3〜5分）、**出力** タブ → `apiEndpoint` をコピー
-5. アプリ内: ドロワー → 設定 → エンドポイント URL を貼り付け → 保存
-
-### オプション B: Azure CLI
-
-```bash
-# Azure にログイン
-az login
-
-# デプロイスクリプトを実行
-chmod +x deploy.sh
-./deploy.sh [RESOURCE_GROUP] [LOCATION] [APP_NAME]
-
-# 例:
-./deploy.sh daily-cloud-photo-rg eastus dailycloudphoto
-```
-
-### オプション C: 手動 CLI
-
-```bash
-# リソースグループの作成
-az group create --name daily-cloud-photo-rg --location eastus
-
-# ARM テンプレートのデプロイ
-az deployment group create \
-  --resource-group daily-cloud-photo-rg \
-  --template-file azuredeploy.json \
-  --parameters appName=dailycloudphoto
-
-# 出力から Function App 名を取得
-FUNC_APP=$(az deployment group show \
-  --resource-group daily-cloud-photo-rg \
-  --name azuredeploy \
-  --query "properties.outputs.functionAppName.value" -o tsv)
-
-# 関数コードのデプロイ
-cd function_app
-func azure functionapp publish $FUNC_APP --python
-```
+2. パラメータを入力（デフォルトのままでOK） → **確認および作成** → **作成**
+3. デプロイ完了後（約3〜5分）、**出力** タブ → `functionAppName` をコピー
+4. 関数コードをデプロイ:
+   ```bash
+   cd function_app
+   func azure functionapp publish <functionAppName> --python
+   ```
+5. 出力タブから `apiEndpoint` をコピー
+6. アプリ内: ドロワー → 設定 → エンドポイント URL を貼り付け → 保存
 
 ---
 
@@ -82,9 +39,8 @@ func azure functionapp publish $FUNC_APP --python
 
 ## アプリでの接続
 
-1. ドロワー → **設定** → API エンドポイント URL を入力 → **保存**
-2. **接続テスト** で確認
-3. ドロワー → **ログイン** からアカウント作成
+7. **接続テスト** で確認
+8. ドロワー → **ログイン** からアカウント作成
 
 ---
 
@@ -140,44 +96,6 @@ func azure functionapp publish $FUNC_APP --python
 
 ---
 
-## ローカル開発
-
-```bash
-cd function_app
-
-# 仮想環境の作成
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows
-
-# 依存パッケージのインストール
-pip install -r requirements.txt
-
-# local.settings.json の作成
-cat > local.settings.json << 'EOF'
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "COSMOS_CONNECTION": "<your-cosmos-connection-string>",
-    "COSMOS_DATABASE": "dailycloudphoto",
-    "STORAGE_CONNECTION": "<your-storage-connection-string>",
-    "STORAGE_CONTAINER": "photos",
-    "JWT_SECRET": "dev-secret-change-me",
-    "REQUIRE_EMAIL": "true",
-    "ENABLE_SHARE_URL": "true",
-    "ENABLE_LABEL_SHARING": "true"
-  }
-}
-EOF
-
-# ローカルで実行
-func start
-```
-
----
-
 ## リソースの削除
 
 ```bash
@@ -225,27 +143,3 @@ az group delete --name daily-cloud-photo-rg --yes --no-wait
 
 完全な API 仕様は [API.md](../aws/API.md) を参照してください。
 この Azure バックエンドでは仕様の全エンドポイントが実装されています。
-
-## トラブルシューティング
-
-### Function App が 404 を返す
-- `host.json` のルートプレフィックスが `v1` であることを確認
-- デプロイが完了しているか確認: `az functionapp show --name <app> --resource-group <rg>`
-
-### Cosmos DB への接続タイムアウト
-- `COSMOS_CONNECTION` アプリ設定が正しいことを確認
-- Cosmos DB アカウントが同じリージョンにあるか確認
-
-### アップロード失敗（SAS トークンエラー）
-- ストレージアカウントに CORS が設定されているか確認
-- `STORAGE_CONNECTION` のアカウントキーが正しいか確認
-- `photos` コンテナが存在するか確認
-
-### ログの確認
-```bash
-# ライブログのストリーミング
-az functionapp log tail --name <function-app-name> --resource-group <rg>
-
-# Application Insights の確認
-az monitor app-insights query --app <insights-name> --analytics-query "traces | order by timestamp desc | take 50"
-```

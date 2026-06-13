@@ -6,75 +6,14 @@
 
 ---
 
-## Prerequisites
-
-1. **Google Cloud SDK** (`gcloud`) installed and authenticated
-2. A GCP project with billing enabled
-3. Enable required APIs:
-   ```bash
-   gcloud services enable \
-     cloudfunctions.googleapis.com \
-     cloudbuild.googleapis.com \
-     firestore.googleapis.com \
-     storage.googleapis.com \
-     identitytoolkit.googleapis.com \
-     run.googleapis.com
-   ```
-4. **Firebase project** linked to the same GCP project (for Firebase Auth)
-5. **Firestore** initialized in Native mode:
-   ```bash
-   gcloud firestore databases create --location=asia-northeast1
-   ```
-
----
-
 ## Quick Deploy
 
-### Option A: One-command deploy script
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### Option B: Manual steps
-
-```bash
-# Set variables
-export PROJECT_ID=$(gcloud config get-value project)
-export REGION=asia-northeast1
-export BUCKET_NAME=${PROJECT_ID}-photos
-
-# Create Cloud Storage bucket
-gsutil mb -l ${REGION} gs://${BUCKET_NAME}
-gsutil versioning set on gs://${BUCKET_NAME}
-
-# Deploy main API function
-gcloud functions deploy daily-cloud-photo-api \
-  --gen2 \
-  --runtime=python312 \
-  --region=${REGION} \
-  --source=. \
-  --entry-point=main_handler \
-  --trigger-http \
-  --allow-unauthenticated \
-  --memory=256MB \
-  --timeout=60s \
-  --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID},REQUIRE_EMAIL=true,REQUIRE_PHONE=false,ENABLE_SHARE_URL=true,ENABLE_LABEL_SHARING=true"
-
-# Deploy storage trigger function
-gcloud functions deploy daily-cloud-photo-storage-trigger \
-  --gen2 \
-  --runtime=python312 \
-  --region=${REGION} \
-  --source=. \
-  --entry-point=storage_trigger_handler \
-  --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
-  --trigger-event-filters="bucket=${BUCKET_NAME}" \
-  --memory=512MB \
-  --timeout=120s \
-  --set-env-vars="PHOTOS_BUCKET=${BUCKET_NAME},GCP_PROJECT=${PROJECT_ID}"
-```
+1. Click the **Open in Cloud Shell** button above
+2. Run the deploy script:
+   ```bash
+   chmod +x deploy.sh && ./deploy.sh
+   ```
+3. Copy the API endpoint URL from the output
 
 ---
 
@@ -94,13 +33,9 @@ gcloud functions deploy daily-cloud-photo-storage-trigger \
 
 ## Connecting the App
 
-1. After deployment, copy the function URL from the output:
-   ```
-   https://{REGION}-{PROJECT_ID}.cloudfunctions.net/daily-cloud-photo-api
-   ```
-2. Open Drawer → **Settings** → Enter the endpoint URL → **Save**
-3. Run **Connection Test**
-4. Drawer → **Login** → Create account
+4. Open Drawer → **Settings** → Paste the endpoint URL → **Save**
+5. Run **Connection Test**
+6. Drawer → **Login** → Create account
 
 ---
 

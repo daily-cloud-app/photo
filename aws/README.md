@@ -1,5 +1,7 @@
 # Daily Cloud Photo — AWS Backend
 
+> Requires an AWS account ([create free](https://aws.amazon.com/free/))
+
 ## One-Click Deploy
 
 Leave `LambdaCodeBucket` empty and the template will automatically download code from GitHub Releases.

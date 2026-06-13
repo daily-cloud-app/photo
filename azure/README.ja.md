@@ -1,5 +1,7 @@
 # Daily Cloud Photo — Azure バックエンド
 
+> Azure アカウントが必要です（[無料で作成](https://azure.microsoft.com/free/)）
+
 ## ワンクリックデプロイ
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json)

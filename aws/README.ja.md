@@ -1,5 +1,7 @@
 # Daily Cloud Photo — AWS バックエンド
 
+> AWS アカウントが必要です（[無料で作成](https://aws.amazon.com/free/)）
+
 ## ワンクリックデプロイ
 
 `LambdaCodeBucket` を空欄にすると、GitHub Releases から自動的にコードをダウンロードしてデプロイします。

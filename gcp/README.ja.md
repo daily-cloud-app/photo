@@ -1,5 +1,7 @@
 # Daily Cloud Photo — GCP バックエンド
 
+> Google Cloud アカウントが必要です（[無料で作成](https://cloud.google.com/free)）
+
 ## ワンクリックデプロイ
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=main.py)

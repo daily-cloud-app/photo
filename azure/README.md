@@ -1,5 +1,7 @@
 # Daily Cloud Photo — Azure Backend
 
+> Requires an Azure account ([create free](https://azure.microsoft.com/free/))
+
 ## One-Click Deploy
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json)

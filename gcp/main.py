@@ -619,6 +619,7 @@ def _photos_list(request):
             'thumbnailUrl': thumbnail_url,
             'fullUrl': full_url,
             'labels': item.get('labels', []),
+            'labelNames': item.get('labelNames', {}),
             'shared': False,
             'sharedFrom': '',
         })
@@ -842,6 +843,7 @@ def _photos_update_labels(request, path):
 
     body = request.get_json(silent=True) or {}
     labels = body.get('labels', [])
+    label_names = body.get('labelNames', {})
 
     if not isinstance(labels, list):
         return _err(400, 'labels must be an array')
@@ -850,8 +852,12 @@ def _photos_update_labels(request, path):
     if not item:
         return _err(404, 'Photo not found')
 
+    update_data = {'labels': labels}
+    if label_names and isinstance(label_names, dict):
+        update_data['labelNames'] = label_names
+
     doc_ref = db.collection(PHOTOS_COLLECTION).document(_doc_id(uid, photo_id))
-    doc_ref.update({'labels': labels})
+    doc_ref.update(update_data)
 
     return _ok(200, {'message': 'Labels updated.', 'labels': labels})
 

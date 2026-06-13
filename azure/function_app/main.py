@@ -511,6 +511,7 @@ def photos_list(req: func.HttpRequest) -> func.HttpResponse:
             "thumbnailUrl": thumbnail_url,
             "fullUrl": full_url,
             "labels": item.get("labels", []),
+            "labelNames": item.get("labelNames", {}),
             "shared": False,
             "sharedFrom": "",
         })
@@ -730,6 +731,7 @@ def photos_update_labels(req: func.HttpRequest) -> func.HttpResponse:
 
     b = _body(req)
     labels = b.get("labels", [])
+    label_names = b.get("labelNames", {})
     if not isinstance(labels, list):
         return _err(400, "labels must be an array")
 
@@ -740,6 +742,8 @@ def photos_update_labels(req: func.HttpRequest) -> func.HttpResponse:
         return _err(404, "Photo not found")
 
     item["labels"] = labels
+    if label_names and isinstance(label_names, dict):
+        item["labelNames"] = label_names
     container.upsert_item(body=item)
 
     return _ok(200, {"message": "Labels updated.", "labels": labels})

@@ -4,9 +4,6 @@
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json)
 
-> **Note**: The button above works when the template is hosted in a public repository.
-> Otherwise, download `azuredeploy.json` and deploy manually via Azure Portal or CLI.
-
 ---
 
 ## Prerequisites
@@ -195,6 +192,8 @@ az group delete --name daily-cloud-photo-rg --yes --no-wait
 ## Cost Estimate
 
 All services use **serverless/consumption** pricing. Low usage is extremely cheap.
+
+These are estimates only. Actual costs depend on usage patterns and may vary. Always monitor your cloud provider's billing dashboard.
 
 | Service | Pricing Model | Free Tier / Estimate |
 |---------|--------------|---------------------|

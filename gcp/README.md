@@ -4,9 +4,6 @@
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=main.py)
 
-> **Note**: The button above works when the repository is public.
-> Otherwise, clone the repo manually and run the deploy script.
-
 ---
 
 ## Prerequisites
@@ -170,6 +167,8 @@ gcloud firestore databases delete --database="(default)"
 ## Cost Estimate
 
 All services are pay-per-use. Low usage typically falls within GCP Free Tier.
+
+These are estimates only. Actual costs depend on usage patterns and may vary. Always monitor your cloud provider's billing dashboard.
 
 | Service | Free Tier |
 |---------|-----------|

@@ -4,9 +4,6 @@
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json)
 
-> **注意**: 上記ボタンはテンプレートが公開リポジトリにホストされている場合に使用できます。
-> それ以外の場合は `azuredeploy.json` をダウンロードし、Azure Portal または CLI で手動デプロイしてください。
-
 ---
 
 ## 前提条件
@@ -195,6 +192,8 @@ az group delete --name daily-cloud-photo-rg --yes --no-wait
 ## コスト目安
 
 全サービスが**サーバーレス/従量課金**です。使用量が少なければ非常に安価です。
+
+上記はあくまで目安です。実際の費用は利用状況により異なります。各クラウドプロバイダーの請求ダッシュボードを定期的に確認してください。
 
 | サービス | 料金モデル | 無料枠/目安 |
 |---------|-----------|------------|

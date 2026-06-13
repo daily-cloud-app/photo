@@ -4,9 +4,6 @@
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=main.py)
 
-> **注意**: 上記ボタンはリポジトリが公開されている場合に使用できます。
-> それ以外の場合はリポジトリを手動でクローンし、デプロイスクリプトを実行してください。
-
 ---
 
 ## 前提条件
@@ -170,6 +167,8 @@ gcloud firestore databases delete --database="(default)"
 ## コスト目安
 
 すべて従量課金。少人数であれば GCP 無料枠内に収まります。
+
+上記はあくまで目安です。実際の費用は利用状況により異なります。各クラウドプロバイダーの請求ダッシュボードを定期的に確認してください。
 
 | サービス | 無料枠 |
 |----------|--------|

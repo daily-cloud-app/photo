@@ -6,9 +6,6 @@
 
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=daily-cloud-photo&templateURL=https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/template.yaml)
 
-> **注意**: 上記ボタンはテンプレートが公開リポジトリにホストされている場合に使用できます。
-> それ以外の場合は `template.yaml` をダウンロードして手動アップロードしてください。
-
 ### クイックスタート
 
 1. AWS コンソール → **CloudFormation** → **スタックの作成**
@@ -65,6 +62,8 @@
 ## コスト目安
 
 すべて従量課金。少人数であれば AWS 無料枠内に収まります。
+
+上記はあくまで目安です。実際の費用は利用状況により異なります。各クラウドプロバイダーの請求ダッシュボードを定期的に確認してください。
 
 | サービス | 無料枠 |
 |----------|--------|

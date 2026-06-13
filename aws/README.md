@@ -6,9 +6,6 @@ Leave `LambdaCodeBucket` empty and the template will automatically download code
 
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=daily-cloud-photo&templateURL=https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/template.yaml)
 
-> **Note**: The button above works when the template is hosted in a public repository.
-> Otherwise, download `template.yaml` and upload it manually.
-
 ### Quick Start
 
 1. AWS Console → **CloudFormation** → **Create stack**
@@ -65,6 +62,8 @@ User → API Gateway (HTTP API) → Lambda (unified handler)
 ## Cost Estimate
 
 All services are pay-per-use. Low usage typically falls within AWS Free Tier.
+
+These are estimates only. Actual costs depend on usage patterns and may vary. Always monitor your cloud provider's billing dashboard.
 
 | Service | Free Tier |
 |---------|-----------|

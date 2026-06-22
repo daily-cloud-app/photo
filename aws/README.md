@@ -39,6 +39,8 @@ aws cloudformation deploy --stack-name daily-cloud-photo \
   --parameter-overrides AppDisplayName="My Album"
 ```
 
+[![Open Console](https://img.shields.io/badge/AWS-Console-blue?logo=amazonaws)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) You can also deploy via the Console GUI — upload `template.yaml` and fill in parameters through the form.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | AppName | `daily-cloud-photo` | Prefix for all resource names |
@@ -141,6 +143,8 @@ aws cloudformation deploy --stack-name daily-cloud-photo \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides AppDisplayName="My Album"
 ```
+
+[![Open Console](https://img.shields.io/badge/AWS-Console-blue?logo=amazonaws)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) GUI でデプロイする場合は、コンソールから `template.yaml` をアップロードし、フォームでパラメータを入力できます。
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|

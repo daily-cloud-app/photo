@@ -44,7 +44,7 @@ You can customize the deployment by setting environment variables before running
 | REQUIRE_PHONE | `false` | Require phone number for signup |
 | ENABLE_SHARE_URL | `true` | Enable upload URL sharing feature |
 | ENABLE_LABEL_SHARING | `true` | Enable label sharing between users |
-| APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | Display name returned by /info endpoint |
+| APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | Display name shown in the app |
 
 ### Connecting the App
 
@@ -152,6 +152,8 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 3. **ログイン** からアカウント作成
 
 ### リソースの削除
+
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
 ```bash
 gcloud config set project daily-cloud-app

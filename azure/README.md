@@ -33,7 +33,7 @@
 | requirePhone | `false` | Require phone number for signup |
 | enableShareUrl | `true` | Enable upload URL sharing feature |
 | enableLabelSharing | `true` | Enable label sharing between users |
-| appDisplayName | `Daily Cloud Photo Backend` | Display name returned by /info endpoint |
+| appDisplayName | `Daily Cloud Photo Backend` | Display name shown in the app |
 
 ## Connecting the App
 

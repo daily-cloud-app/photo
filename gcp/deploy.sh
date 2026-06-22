@@ -175,7 +175,7 @@ gcloud functions deploy "${FUNCTION_NAME}" \
     --gen2 \
     --runtime=python312 \
     --region="${REGION}" \
-    --source=. \
+    --source=./functions \
     --entry-point=main_handler \
     --trigger-http \
     --allow-unauthenticated \
@@ -219,7 +219,7 @@ gcloud functions deploy "${TRIGGER_FUNCTION_NAME}" \
     --gen2 \
     --runtime=python312 \
     --region="${REGION}" \
-    --source=. \
+    --source=./functions \
     --entry-point=storage_trigger_handler \
     --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
     --trigger-event-filters="bucket=${BUCKET_NAME}" \

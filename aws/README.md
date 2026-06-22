@@ -104,7 +104,7 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 - **API Gateway throttling**: Add rate limits to prevent brute-force attacks
 - **WAF**: Place WAF in front of API Gateway to block malicious requests
 - **CORS restriction**: Limit `AllowOrigins` to specific domains
-- **CloudTrail**: Enable API call audit logging
+- **Access logging**: Enable API Gateway access logs via CloudWatch
 - **IAM least privilege**: Remove unnecessary actions
 - **Share URL limits**: Consider adding file size limits, upload count limits, and Content-Type validation
 
@@ -204,6 +204,6 @@ aws cloudformation delete-stack --stack-name daily-cloud-photo
 - **API Gatewayスロットリング**: ステージ設定でレート制限を追加
 - **WAF**: API Gateway の前に WAF を配置
 - **CORS の制限**: `AllowOrigins` を特定ドメインに限定
-- **CloudTrail**: API 呼び出しの監査ログ有効化
+- **アクセスログ**: API Gateway のアクセスログを CloudWatch で有効化
 - **IAM ロール最小権限化**: 不要なアクションの除去
 - **共有 URL の制限**: ファイルサイズ制限、アップロード回数制限、Content-Type 検証の追加を検討

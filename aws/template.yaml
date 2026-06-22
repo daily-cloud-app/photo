@@ -212,11 +212,12 @@ Resources:
 
   PhotosBucket:
     Type: AWS::S3::Bucket
+    DependsOn: S3TriggerPermission
     Properties:
       BucketName: !If
         - UseCustomBucketName
         - !Ref PhotosBucketName
-        - !Ref 'AWS::NoValue'
+        - !Sub '${AppName}-photos-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -310,8 +311,8 @@ Resources:
                   - s3:HeadObject
                   - s3:ListBucket
                 Resource:
-                  - !GetAtt PhotosBucket.Arn
-                  - !Sub '${PhotosBucket.Arn}/*'
+                  - !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}'
+                  - !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}/*'
               - Effect: Allow
                 Action:
                   - dynamodb:PutItem
@@ -386,6 +387,7 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}'
 
   # ── API Gateway (HTTP API) ──
 

@@ -101,10 +101,10 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 
 ### Security Recommendations for Production
 
-- **API Gateway throttling**: Add rate limits to prevent brute-force attacks
-- **WAF**: Place WAF in front of API Gateway to block malicious requests
-- **CORS restriction**: Limit `AllowOrigins` to specific domains
-- **Access logging**: Enable API Gateway access logs via CloudWatch
+- **API Gateway throttling**: Add rate limits to prevent brute-force attacks ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-throttling.html))
+- **WAF**: Place WAF in front of API Gateway to block malicious requests ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-control-access-aws-waf.html))
+- **CORS restriction**: Limit `AllowOrigins` to specific domains ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-cors.html))
+- **Access logging**: Enable API Gateway access logs via CloudWatch ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html))
 - **IAM least privilege**: Remove unnecessary actions
 - **Share URL limits**: Consider adding file size limits, upload count limits, and Content-Type validation
 
@@ -201,9 +201,9 @@ aws cloudformation delete-stack --stack-name daily-cloud-photo
 
 ### 本番運用時のセキュリティ推奨事項
 
-- **API Gatewayスロットリング**: ステージ設定でレート制限を追加
-- **WAF**: API Gateway の前に WAF を配置
-- **CORS の制限**: `AllowOrigins` を特定ドメインに限定
-- **アクセスログ**: API Gateway のアクセスログを CloudWatch で有効化
+- **API Gatewayスロットリング**: ステージ設定でレート制限を追加 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-throttling.html))
+- **WAF**: API Gateway の前に WAF を配置 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-control-access-aws-waf.html))
+- **CORS の制限**: `AllowOrigins` を特定ドメインに限定 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-cors.html))
+- **アクセスログ**: API Gateway のアクセスログを CloudWatch で有効化 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html))
 - **IAM ロール最小権限化**: 不要なアクションの除去
 - **共有 URL の制限**: ファイルサイズ制限、アップロード回数制限、Content-Type 検証の追加を検討

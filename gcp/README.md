@@ -94,12 +94,12 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 
 ### Security Recommendations for Production
 
-- **IAM**: Use service accounts with least-privilege roles
-- **VPC Connector**: Place functions behind a VPC for internal-only access
-- **Cloud Armor**: Add WAF rules in front of Cloud Load Balancer
+- **IAM**: Use service accounts with least-privilege roles ([docs](https://cloud.google.com/iam/docs/understanding-roles))
+- **VPC Connector**: Place functions behind a VPC for internal-only access ([docs](https://cloud.google.com/functions/docs/networking/connecting-vpc))
+- **Cloud Armor**: Add WAF rules in front of Cloud Load Balancer ([docs](https://cloud.google.com/armor/docs/configure-waf))
 - **CORS restriction**: Limit allowed origins to specific domains
-- **Audit Logging**: Enable Cloud Audit Logs for all API calls
-- **Rate Limiting**: Configure Cloud Functions concurrency limits
+- **Audit Logging**: Enable Cloud Audit Logs for all API calls ([docs](https://cloud.google.com/logging/docs/audit))
+- **Rate Limiting**: Configure Cloud Functions concurrency limits ([docs](https://cloud.google.com/functions/docs/configuring/max-instances))
 - **Share URL limits**: Consider adding file size limits, upload count limits, and Content-Type validation
 
 ---
@@ -195,10 +195,10 @@ gcloud firestore databases delete --database="(default)"
 
 ### 本番運用時のセキュリティ推奨事項
 
-- **IAM**: 最小権限のサービスアカウントを使用
-- **VPC コネクタ**: 関数を VPC 内に配置し内部アクセスのみに制限
-- **Cloud Armor**: Cloud Load Balancer の前に WAF ルールを追加
+- **IAM**: 最小権限のサービスアカウントを使用 ([docs](https://cloud.google.com/iam/docs/understanding-roles))
+- **VPC コネクタ**: 関数を VPC 内に配置し内部アクセスのみに制限 ([docs](https://cloud.google.com/functions/docs/networking/connecting-vpc))
+- **Cloud Armor**: Cloud Load Balancer の前に WAF ルールを追加 ([docs](https://cloud.google.com/armor/docs/configure-waf))
 - **CORS の制限**: 許可するオリジンを特定ドメインに限定
-- **監査ログ**: 全 API 呼び出しに Cloud Audit Logs を有効化
-- **レート制限**: Cloud Functions の同時実行数制限を設定
+- **監査ログ**: 全 API 呼び出しに Cloud Audit Logs を有効化 ([docs](https://cloud.google.com/logging/docs/audit))
+- **レート制限**: Cloud Functions の同時実行数制限を設定 ([docs](https://cloud.google.com/functions/docs/configuring/max-instances))
 - **共有 URL の制限**: ファイルサイズ制限、アップロード回数制限、Content-Type 検証の追加を検討

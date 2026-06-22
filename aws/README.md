@@ -135,16 +135,9 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 
 ### パラメータ一覧
 
-デプロイ時に `--parameter-overrides` でカスタマイズが可能です:
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) 
 
-```bash
-aws cloudformation deploy --stack-name daily-cloud-photo \
-  --template-file template.yaml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides AppDisplayName="My Album"
-```
-
-[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) GUI でデプロイする場合は、コンソールから `template.yaml` をアップロードし、フォームでパラメータを入力できます。
+GUI でデプロイする場合は、コンソールから `template.yaml` をアップロードし、フォームでパラメータを入力できます。
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
@@ -152,9 +145,9 @@ aws cloudformation deploy --stack-name daily-cloud-photo \
 | RequireEmail | `true` | サインアップ時にメール必須 |
 | RequirePhone | `false` | サインアップ時に電話番号必須 |
 | PhotosBucketName | (自動生成) | 写真用 S3 バケット名 |
-| EnableShareUrl | `true` | アップロードURL共有機能 |
+| EnableShareUrl | `true` | アップロード URL　共有機能 |
 | EnableLabelSharing | `true` | ラベル共有機能 |
-| AppDisplayName | `Daily Cloud Photo Backend` | /info で返される表示名 |
+| AppDisplayName | `Daily Cloud Photo Backend` | アプリでの表示名 |
 
 ### アプリでの接続
 

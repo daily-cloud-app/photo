@@ -304,7 +304,7 @@ Resources:
 
   PhotosTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     Properties:
       TableName: !Sub '${AppName}-photos'
       BillingMode: PAY_PER_REQUEST

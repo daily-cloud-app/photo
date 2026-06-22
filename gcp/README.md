@@ -141,9 +141,9 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 | BUCKET_NAME | `{project}-photos` | 写真用 Cloud Storage バケット |
 | REQUIRE_EMAIL | `true` | サインアップ時にメール必須 |
 | REQUIRE_PHONE | `false` | サインアップ時に電話番号必須 |
-| ENABLE_SHARE_URL | `true` | アップロードURL共有機能 |
+| ENABLE_SHARE_URL | `true` | アップロード URL 共有機能 |
 | ENABLE_LABEL_SHARING | `true` | ラベル共有機能 |
-| APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | /info で返される表示名 |
+| APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | アプリでの表示名 |
 
 ### アプリでの接続
 

@@ -26,20 +26,13 @@
    aws cloudformation describe-stacks --stack-name daily-cloud-photo \
      --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text
    ```
-4. Copy the URL into the app
+4. Copy the API endpoint URL from the output into the app
 
 ### Parameters
 
-You can customize the deployment by adding `--parameter-overrides`:
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) 
 
-```bash
-aws cloudformation deploy --stack-name daily-cloud-photo \
-  --template-file template.yaml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides AppDisplayName="My Album"
-```
-
-[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create) You can also deploy via the Console GUI — upload `template.yaml` and fill in parameters through the form.
+You can also deploy via the Console GUI — upload `template.yaml` and fill in parameters through the form.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -131,7 +124,7 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
    aws cloudformation describe-stacks --stack-name daily-cloud-photo \
      --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text
    ```
-4. 出力された URL をアプリに入力
+4. 出力された API エンドポイント URL をアプリに入力
 
 ### パラメータ一覧
 

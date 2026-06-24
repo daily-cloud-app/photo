@@ -55,10 +55,11 @@ You can also deploy via the Console GUI — upload `template.yaml` and fill in p
 ```bash
 BUCKET=$(aws cloudformation describe-stacks --stack-name daily-cloud-photo \
   --query "Stacks[0].Outputs[?OutputKey=='PhotosBucketName'].OutputValue" --output text)
-aws s3 rm s3://$BUCKET --recursive
-aws s3api delete-objects --bucket $BUCKET \
-  --delete "$(aws s3api list-object-versions --bucket $BUCKET \
-  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)" 2>/dev/null
+python3 -c "
+import boto3
+s3 = boto3.resource('s3').Bucket('$BUCKET')
+s3.object_versions.delete()
+"
 aws cloudformation delete-stack --stack-name daily-cloud-photo
 ```
 
@@ -157,10 +158,11 @@ GUI でデプロイする場合は、コンソールから `template.yaml` を�
 ```bash
 BUCKET=$(aws cloudformation describe-stacks --stack-name daily-cloud-photo \
   --query "Stacks[0].Outputs[?OutputKey=='PhotosBucketName'].OutputValue" --output text)
-aws s3 rm s3://$BUCKET --recursive
-aws s3api delete-objects --bucket $BUCKET \
-  --delete "$(aws s3api list-object-versions --bucket $BUCKET \
-  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)" 2>/dev/null
+python3 -c "
+import boto3
+s3 = boto3.resource('s3').Bucket('$BUCKET')
+s3.object_versions.delete()
+"
 aws cloudformation delete-stack --stack-name daily-cloud-photo
 ```
 

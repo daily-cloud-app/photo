@@ -94,6 +94,8 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 
 ### Security Recommendations for Production
 
+These are examples only — not an exhaustive list. Evaluate your own requirements and apply additional measures as needed.
+
 - **IAM**: Use service accounts with least-privilege roles ([docs](https://cloud.google.com/iam/docs/understanding-roles))
 - **VPC Connector**: Place functions behind a VPC for internal-only access ([docs](https://cloud.google.com/functions/docs/networking/connecting-vpc))
 - **Cloud Armor**: Add WAF rules in front of Cloud Load Balancer ([docs](https://cloud.google.com/armor/docs/configure-waf))
@@ -194,6 +196,8 @@ gcloud firestore databases delete --database="(default)"
 | ネットワーク | 月1 GB エグレス |
 
 ### 本番運用時のセキュリティ推奨事項
+
+以下は一例であり、これだけで十分というわけではありません。要件に応じて追加の対策を検討してください。
 
 - **IAM**: 最小権限のサービスアカウントを使用 ([docs](https://cloud.google.com/iam/docs/understanding-roles))
 - **VPC コネクタ**: 関数を VPC 内に配置し内部アクセスのみに制限 ([docs](https://cloud.google.com/functions/docs/networking/connecting-vpc))

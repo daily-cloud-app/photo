@@ -94,6 +94,8 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 
 ### Security Recommendations for Production
 
+These are examples only — not an exhaustive list. Evaluate your own requirements and apply additional measures as needed.
+
 - **API Gateway throttling**: Add rate limits to prevent brute-force attacks ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-throttling.html))
 - **WAF**: Place WAF in front of API Gateway to block malicious requests ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-control-access-aws-waf.html))
 - **CORS restriction**: Limit `AllowOrigins` to specific domains ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-cors.html))
@@ -193,6 +195,8 @@ aws cloudformation delete-stack --stack-name daily-cloud-photo
 | Cognito | 月50,000 MAU |
 
 ### 本番運用時のセキュリティ推奨事項
+
+以下は一例であり、これだけで十分というわけではありません。要件に応じて追加の対策を検討してください。
 
 - **API Gatewayスロットリング**: ステージ設定でレート制限を追加 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-throttling.html))
 - **WAF**: API Gateway の前に WAF を配置 ([docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-control-access-aws-waf.html))

@@ -62,7 +62,7 @@ Resources:
     Properties:
       UserPoolName: !Sub '${AppName}-user-pool'
       AutoVerifiedAttributes:
-        - !If [EmailRequired, email, !Ref 'AWS::NoValue']
+        - email
       UsernameAttributes:
         - email
       Schema:

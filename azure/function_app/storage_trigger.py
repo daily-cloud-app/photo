@@ -79,7 +79,7 @@ def process_photo(blob: func.InputStream):
         # Skip non-image files
         ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
         image_extensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'}
-        if ext not in image_extensions:
+        if ext and ext not in image_extensions:
             logger.info(f"Skipping non-image file: {blob_name}")
             return
 

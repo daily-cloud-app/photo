@@ -85,8 +85,16 @@ def storage_trigger_handler(cloud_event: CloudEvent):
     }
     content_type = content_type_map.get(ext, '')
     if not content_type:
-        print(f'Skipping non-image file: {key}')
-        return
+        # No extension: check blob content type or default to jpeg
+        try:
+            blob_obj = storage_client.bucket(PHOTOS_BUCKET).blob(key)
+            blob_obj.reload()
+            content_type = blob_obj.content_type or 'image/jpeg'
+        except Exception:
+            content_type = 'image/jpeg'
+        if not content_type.startswith('image/'):
+            print(f'Skipping non-image file: {key}')
+            return
 
     # Generate thumbnail + extract capture date from EXIF
     thumbnail_key = f"thumbnails/{key.removeprefix('users/')}"

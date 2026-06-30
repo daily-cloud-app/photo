@@ -55,8 +55,16 @@ def handler(event, context):
         }
         content_type = content_type_map.get(ext, '')
         if not content_type:
-            print(f'Skipping non-image file: {key}')
-            continue
+            # No extension: check S3 object content type or default to jpeg
+            try:
+                head = s3_client.head_object(Bucket=bucket, Key=key)
+                content_type = head.get('ContentType', 'image/jpeg')
+            except Exception:
+                content_type = 'image/jpeg'
+            # Still skip if not an image
+            if not content_type.startswith('image/'):
+                print(f'Skipping non-image file: {key}')
+                continue
 
         # Generate thumbnail + extract capture date from EXIF
         thumbnail_key = f"thumbnails/{key.removeprefix('users/')}"

@@ -830,7 +830,7 @@ def _upload_page(event):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>写真アップロード</title>
+    <title>Photo Upload</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }}
@@ -858,18 +858,18 @@ def _upload_page(event):
 </head>
 <body>
     <div class="card">
-        <h1>写真をアップロード</h1>
-        <p class="subtitle">画像を選択またはドロップしてください</p>
+        <h1>Upload Photos</h1>
+        <p class="subtitle">Select or drop images to upload</p>
 
         <div class="upload-area" id="dropArea" onclick="document.getElementById('fileInput').click()">
             <div class="icon">☁️</div>
-            <p>ドラッグ＆ドロップ</p>
-            <p>または <span class="browse">ファイルを選択</span></p>
+            <p>Drag & Drop</p>
+            <p>or <span class="browse">Browse files</span></p>
             <input type="file" id="fileInput" accept="image/*" multiple>
             <div id="fileCount" class="file-count"></div>
         </div>
 
-        <button id="uploadBtn" onclick="uploadFiles()" disabled>アップロード</button>
+        <button id="uploadBtn" onclick="uploadFiles()" disabled>Upload</button>
         <div id="status"></div>
     </div>
 
@@ -888,7 +888,7 @@ def _upload_page(event):
         fileInput.addEventListener('change', (e) => {{
             selectedFiles = Array.from(e.target.files);
             uploadBtn.disabled = selectedFiles.length === 0;
-            fileCount.textContent = selectedFiles.length > 0 ? `${{selectedFiles.length}} 件選択中` : '';
+            fileCount.textContent = selectedFiles.length > 0 ? `${{selectedFiles.length}} file(s) selected` : '';
             statusDiv.innerHTML = '';
         }});
 
@@ -899,7 +899,7 @@ def _upload_page(event):
             dropArea.classList.remove('dragover');
             selectedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
             uploadBtn.disabled = selectedFiles.length === 0;
-            fileCount.textContent = selectedFiles.length > 0 ? `${{selectedFiles.length}} 件選択中` : '';
+            fileCount.textContent = selectedFiles.length > 0 ? `${{selectedFiles.length}} file(s) selected` : '';
             statusDiv.innerHTML = '';
         }});
 
@@ -910,7 +910,7 @@ def _upload_page(event):
 
             for (const file of selectedFiles) {{
                 const pct = Math.round(((success + failed) / selectedFiles.length) * 100);
-                statusDiv.innerHTML = `<div class="status progress">アップロード中... (${{success + failed + 1}}/${{selectedFiles.length}})<div class="progress-bar"><div class="progress-bar-fill" style="width:${{pct}}%"></div></div></div>`;
+                statusDiv.innerHTML = `<div class="status progress">Uploading... (${{success + failed + 1}}/${{selectedFiles.length}})<div class="progress-bar"><div class="progress-bar-fill" style="width:${{pct}}%"></div></div></div>`;
                 try {{
                     // Get presigned URL
                     const res = await fetch('{api_base}/photos/share-upload', {{
@@ -936,9 +936,9 @@ def _upload_page(event):
             }}
 
             if (failed === 0) {{
-                statusDiv.innerHTML = `<div class="status success">✅ ${{success}} 件アップロード完了</div>`;
+                statusDiv.innerHTML = `<div class="status success">✅ ${{success}} file(s) uploaded successfully</div>`;
             }} else {{
-                statusDiv.innerHTML = `<div class="status error">完了: ${{success}} 件成功 / ${{failed}} 件失敗</div>`;
+                statusDiv.innerHTML = `<div class="status error">Done: ${{success}} succeeded / ${{failed}} failed</div>`;
             }}
             uploadBtn.disabled = false;
             selectedFiles = [];

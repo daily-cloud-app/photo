@@ -94,6 +94,15 @@ else
         --project="${PROJECT_ID}" \
         --quiet 2>/dev/null || echo -e "  ${GREEN}✓ Firestore already configured${NC}"
 fi
+
+# Create composite index for userId + photoId queries
+gcloud firestore indexes composite create \
+    --collection-group=photos \
+    --field-config field-path=userId,order=ascending \
+    --field-config field-path=photoId,order=ascending \
+    --project="${PROJECT_ID}" \
+    --quiet 2>/dev/null || true
+echo -e "  ${GREEN}✓ Firestore indexes configured${NC}"
 echo ""
 
 # ── Create Cloud Storage bucket ──

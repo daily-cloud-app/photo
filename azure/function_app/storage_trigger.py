@@ -76,6 +76,13 @@ def process_photo(blob: func.InputStream):
             logger.info(f"Skipping thumbnail blob: {blob_name}")
             return
 
+        # Skip non-image files
+        ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
+        image_extensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'}
+        if ext not in image_extensions:
+            logger.info(f"Skipping non-image file: {blob_name}")
+            return
+
     except (IndexError, ValueError) as e:
         logger.error(f"Failed to parse blob path: {blob_name}, error: {e}")
         return

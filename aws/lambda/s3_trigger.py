@@ -38,6 +38,10 @@ def handler(event, context):
         user_id = parts[1]
         photo_id = '/'.join(parts[2:])  # e.g. "2026/06/28/filename.png"
 
+        # Skip empty objects (folder placeholders) and non-image files
+        if size == 0:
+            continue
+
         # Infer content type from extension
         ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
         content_type_map = {
@@ -49,7 +53,10 @@ def handler(event, context):
             'heic': 'image/heic',
             'heif': 'image/heic',
         }
-        content_type = content_type_map.get(ext, 'application/octet-stream')
+        content_type = content_type_map.get(ext, '')
+        if not content_type:
+            print(f'Skipping non-image file: {key}')
+            continue
 
         # Generate thumbnail + extract capture date from EXIF
         thumbnail_key = f"thumbnails/{key.removeprefix('users/')}"

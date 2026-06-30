@@ -63,6 +63,15 @@ def storage_trigger_handler(cloud_event: CloudEvent):
 
     print(f'Processing: {key} for user {user_id}, photo {photo_id}')
 
+    # Skip empty objects (folder placeholders) and non-image files
+    # Check size from Cloud Storage metadata
+    bucket_obj = storage_client.bucket(PHOTOS_BUCKET)
+    blob = bucket_obj.blob(key)
+    blob.reload()
+    if blob.size == 0:
+        print(f'Skipping empty object: {key}')
+        return
+
     # Infer content type from extension
     ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
     content_type_map = {
@@ -74,7 +83,10 @@ def storage_trigger_handler(cloud_event: CloudEvent):
         'heic': 'image/heic',
         'heif': 'image/heic',
     }
-    content_type = content_type_map.get(ext, 'application/octet-stream')
+    content_type = content_type_map.get(ext, '')
+    if not content_type:
+        print(f'Skipping non-image file: {key}')
+        return
 
     # Generate thumbnail + extract capture date from EXIF
     thumbnail_key = f"thumbnails/{key.removeprefix('users/')}"

@@ -87,8 +87,8 @@ def storage_trigger_handler(cloud_event: CloudEvent):
         print(f'Thumbnail generation failed for {key}: {e}')
         thumbnail_key = None
 
-    # Capture date: EXIF > current time
-    created_at = exif_date if exif_date else datetime.now(timezone.utc).isoformat()
+    # Capture date: EXIF > path date > current time
+    created_at = exif_date if exif_date else _extract_date_from_path(key)
 
     # Register/update metadata in Firestore
     doc_id = _doc_id(user_id, photo_id)
@@ -167,3 +167,18 @@ def _generate_thumbnail_and_get_date(bucket_name, source_key, thumbnail_key):
     thumbnail_blob.upload_from_file(buffer, content_type='image/jpeg')
 
     return exif_date
+
+
+def _extract_date_from_path(key):
+    """Extract date from storage path (users/{uid}/YYYY/MM/DD/{filename}).
+    Returns ISO format string, or current time if path doesn't contain a valid date."""
+    import re
+    match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', key)
+    if match:
+        try:
+            year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            dt = datetime(year, month, day, tzinfo=timezone.utc)
+            return dt.isoformat()
+        except (ValueError, OverflowError):
+            pass
+    return datetime.now(timezone.utc).isoformat()

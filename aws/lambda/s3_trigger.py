@@ -36,14 +36,14 @@ def handler(event, context):
             continue
 
         user_id = parts[1]
-        photo_id = '/'.join(parts[2:])  # e.g. "2026/06/28/filename.png"
+        filename_part = parts[-1]  # UUID or filename
 
         # Skip empty objects (folder placeholders) and non-image files
         if size == 0:
             continue
 
         # Infer content type from extension
-        ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
+        ext = filename_part.rsplit('.', 1)[-1].lower() if '.' in filename_part else ''
         content_type_map = {
             'jpg': 'image/jpeg',
             'jpeg': 'image/jpeg',
@@ -81,10 +81,12 @@ def handler(event, context):
         # Capture date: EXIF > path date > current time
         created_at = exif_date if exif_date else _extract_date_from_path(key)
 
-        # Register/update metadata in DynamoDB
-        existing = table.get_item(Key={'userId': user_id, 'photoId': photo_id})
+        # Check if record already exists (app upload creates record before S3 upload)
+        # Try filename_part first (app uses UUID as filename)
+        existing = table.get_item(Key={'userId': user_id, 'photoId': filename_part})
         if 'Item' in existing:
-            # Update thumbnailKey if record already exists
+            # App-uploaded photo: update existing record
+            photo_id = filename_part
             update_expr = 'SET #s = :status, #sz = :size'
             expr_names = {'#s': 'status', '#sz': 'size'}
             expr_values = {':status': 'uploaded', ':size': size}
@@ -98,11 +100,12 @@ def handler(event, context):
                 ExpressionAttributeValues=expr_values,
             )
         else:
-            # New registration (for files uploaded directly to S3)
+            # Direct S3 upload: use full path as photoId to avoid same-name collisions
+            photo_id = '/'.join(parts[2:])
             item = {
                 'userId': user_id,
                 'photoId': photo_id,
-                'filename': photo_id,
+                'filename': filename_part,
                 'contentType': content_type,
                 's3Key': key,
                 'size': size,

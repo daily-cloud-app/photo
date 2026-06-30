@@ -59,9 +59,9 @@ def storage_trigger_handler(cloud_event: CloudEvent):
         return
 
     user_id = parts[1]
-    photo_id = '/'.join(parts[2:])  # e.g. "2026/06/28/filename.png"
+    filename_part = parts[-1]  # UUID or filename
 
-    print(f'Processing: {key} for user {user_id}, photo {photo_id}')
+    print(f'Processing: {key} for user {user_id}, filename {filename_part}')
 
     # Skip empty objects (folder placeholders) and non-image files
     # Check size from Cloud Storage metadata
@@ -73,7 +73,7 @@ def storage_trigger_handler(cloud_event: CloudEvent):
         return
 
     # Infer content type from extension
-    ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
+    ext = filename_part.rsplit('.', 1)[-1].lower() if '.' in filename_part else ''
     content_type_map = {
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
@@ -86,12 +86,7 @@ def storage_trigger_handler(cloud_event: CloudEvent):
     content_type = content_type_map.get(ext, '')
     if not content_type:
         # No extension: check blob content type or default to jpeg
-        try:
-            blob_obj = storage_client.bucket(PHOTOS_BUCKET).blob(key)
-            blob_obj.reload()
-            content_type = blob_obj.content_type or 'image/jpeg'
-        except Exception:
-            content_type = 'image/jpeg'
+        content_type = blob.content_type or 'image/jpeg'
         if not content_type.startswith('image/'):
             print(f'Skipping non-image file: {key}')
             return
@@ -111,27 +106,30 @@ def storage_trigger_handler(cloud_event: CloudEvent):
     # Capture date: EXIF > path date > current time
     created_at = exif_date if exif_date else _extract_date_from_path(key)
 
-    # Register/update metadata in Firestore
-    doc_id = _doc_id(user_id, photo_id)
+    # Check if record already exists (app upload creates record before storage upload)
+    doc_id = _doc_id(user_id, filename_part)
     doc_ref = db.collection(PHOTOS_COLLECTION).document(doc_id)
     doc = doc_ref.get()
 
     if doc.exists:
-        # Update existing record (file was re-uploaded or confirmed)
+        # App-uploaded photo: update existing record
         update_data = {
             'status': 'uploaded',
-            'size': size,
+            'size': blob.size,
         }
         if thumbnail_key:
             update_data['thumbnailKey'] = thumbnail_key
         doc_ref.update(update_data)
         print(f'Updated existing document: {doc_id}')
     else:
-        # New registration (for files uploaded directly or via share token)
+        # Direct upload: use full path as photoId to avoid same-name collisions
+        photo_id = '/'.join(parts[2:])
+        doc_id = _doc_id(user_id, photo_id)
+        doc_ref = db.collection(PHOTOS_COLLECTION).document(doc_id)
         item = {
             'userId': user_id,
             'photoId': photo_id,
-            'filename': photo_id,
+            'filename': filename_part,
             'contentType': content_type,
             'gcsKey': key,
             'size': size,

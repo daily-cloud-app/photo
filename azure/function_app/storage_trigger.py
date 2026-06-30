@@ -69,7 +69,8 @@ def process_photo(blob: func.InputStream):
             return
 
         user_id = path_parts[1]
-        photo_id = '/'.join(path_parts[2:])  # e.g. "2026/06/28/filename.png"
+        user_id = path_parts[1]
+        filename_part = path_parts[-1]  # UUID or filename
 
         # Skip thumbnails (avoid infinite loop)
         if "thumbnails/" in blob_name:
@@ -77,7 +78,7 @@ def process_photo(blob: func.InputStream):
             return
 
         # Skip non-image files
-        ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''
+        ext = filename_part.rsplit('.', 1)[-1].lower() if '.' in filename_part else ''
         image_extensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'}
         if ext and ext not in image_extensions:
             logger.info(f"Skipping non-image file: {blob_name}")
@@ -153,8 +154,7 @@ def process_photo(blob: func.InputStream):
     # Upload thumbnail to blob storage
     thumbnail_key = None
     if thumbnail_data:
-        # Build thumbnail path: users/{userId}/thumbnails/{photoId}
-        thumbnail_key = f"users/{user_id}/thumbnails/{photo_id}"
+        thumbnail_key = f"users/{user_id}/thumbnails/{filename_part}"
         try:
             blob_service = _get_blob_service()
             container_client = blob_service.get_container_client(STORAGE_CONTAINER)
@@ -173,15 +173,16 @@ def process_photo(blob: func.InputStream):
     try:
         container = _get_cosmos_container("photos")
 
-        # Query for the photo document
+        # Check if app-uploaded record exists (uses filename_part as photoId)
         query = "SELECT * FROM c WHERE c.userId = @userId AND c.id = @photoId"
         params = [
             {"name": "@userId", "value": user_id},
-            {"name": "@photoId", "value": photo_id},
+            {"name": "@photoId", "value": filename_part},
         ]
         items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
 
         if items:
+            # App-uploaded: update existing record
             item = items[0]
             update_fields = {"status": "uploaded", "size": len(image_data)}
 
@@ -189,21 +190,20 @@ def process_photo(blob: func.InputStream):
                 update_fields["thumbnailKey"] = thumbnail_key
             if exif_date:
                 update_fields["exifDate"] = exif_date
-                # Update createdAt if it was not explicitly set
                 if not item.get("createdAt") or item.get("status") == "uploading":
                     update_fields["createdAt"] = exif_date
 
             item.update(update_fields)
             container.upsert_item(body=item)
-            logger.info(f"Cosmos DB updated for photo {photo_id}")
+            logger.info(f"Cosmos DB updated for photo {filename_part}")
         else:
-            # Photo record doesn't exist yet (uploaded via share token)
-            # Create a new record
+            # Direct upload: use full path as photoId
+            photo_id = '/'.join(path_parts[2:])
             blob_key = "/".join(path_parts)
             photo_doc = {
                 "id": photo_id,
                 "userId": user_id,
-                "filename": photo_id,
+                "filename": filename_part,
                 "contentType": "image/jpeg",
                 "blobKey": blob_key,
                 "status": "uploaded",

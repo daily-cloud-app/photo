@@ -111,8 +111,6 @@ def storage_trigger_handler(cloud_event: CloudEvent):
     doc_ref = db.collection(PHOTOS_COLLECTION).document(doc_id)
     doc = doc_ref.get()
 
-    print(f'DEBUG: doc_id={doc_id}, doc.exists={doc.exists}, created_at={created_at}')
-
     if doc.exists:
         # App-uploaded photo: update existing record
         update_data = {

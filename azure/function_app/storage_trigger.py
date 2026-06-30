@@ -200,7 +200,7 @@ def process_photo(blob: func.InputStream):
                 "contentType": "image/jpeg",
                 "blobKey": blob_key,
                 "status": "uploaded",
-                "createdAt": exif_date or datetime.now(timezone.utc).isoformat(),
+                "createdAt": exif_date or _extract_date_from_path(blob_key),
                 "labels": [],
                 "size": len(image_data),
                 "uploadedViaShare": True,
@@ -212,3 +212,18 @@ def process_photo(blob: func.InputStream):
 
     except Exception as e:
         logger.error(f"Failed to update Cosmos DB for {photo_id}: {e}")
+
+
+def _extract_date_from_path(key):
+    """Extract date from blob path (users/{uid}/YYYY/MM/DD/{filename}).
+    Returns ISO format string, or current time if path doesn't contain a valid date."""
+    import re
+    match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', key)
+    if match:
+        try:
+            year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            dt = datetime(year, month, day, tzinfo=timezone.utc)
+            return dt.isoformat()
+        except (ValueError, OverflowError):
+            pass
+    return datetime.now(timezone.utc).isoformat()

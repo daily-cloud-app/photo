@@ -945,8 +945,10 @@ def _share_upload_url(request):
     })
 
     # Generate upload page URL
-    # Use the function's own URL as base
+    # Use the function's own URL as base (force HTTPS for Cloud Run)
     function_url = request.url_root.rstrip('/')
+    if function_url.startswith('http://'):
+        function_url = 'https://' + function_url[7:]
     page_url = f"{function_url}/upload-page?token={token}"
 
     return _ok(200, {
@@ -989,8 +991,10 @@ def _upload_page(request):
     except Exception:
         pass
 
-    # Build API base URL
+    # Build API base URL (force HTTPS for Cloud Run)
     api_base = request.url_root.rstrip('/')
+    if api_base.startswith('http://'):
+        api_base = 'https://' + api_base[7:]
 
     html = f"""<!DOCTYPE html>
 <html lang="ja">

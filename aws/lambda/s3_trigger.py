@@ -36,7 +36,7 @@ def handler(event, context):
             continue
 
         user_id = parts[1]
-        photo_id = parts[-1]
+        photo_id = '/'.join(parts[2:])  # e.g. "2026/06/28/filename.png"
 
         # Infer content type from extension
         ext = photo_id.rsplit('.', 1)[-1].lower() if '.' in photo_id else ''

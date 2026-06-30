@@ -28,7 +28,8 @@ storage_client = gcs.Client()
 
 def _doc_id(user_id, photo_id):
     """Generate Firestore document ID from userId and photoId."""
-    return f'{user_id}_{photo_id}'
+    safe_photo_id = photo_id.replace('/', '_')
+    return f'{user_id}_{safe_photo_id}'
 
 
 @functions_framework.cloud_event
@@ -58,7 +59,7 @@ def storage_trigger_handler(cloud_event: CloudEvent):
         return
 
     user_id = parts[1]
-    photo_id = parts[-1]
+    photo_id = '/'.join(parts[2:])  # e.g. "2026/06/28/filename.png"
 
     print(f'Processing: {key} for user {user_id}, photo {photo_id}')
 

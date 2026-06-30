@@ -92,7 +92,8 @@ def _prefix(uid):
 
 def _doc_id(user_id, photo_id):
     """Generate Firestore document ID from userId and photoId."""
-    return f'{user_id}_{photo_id}'
+    safe_photo_id = photo_id.replace('/', '_')
+    return f'{user_id}_{safe_photo_id}'
 
 
 def _get_photo_doc(user_id, photo_id):

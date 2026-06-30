@@ -69,7 +69,7 @@ def process_photo(blob: func.InputStream):
             return
 
         user_id = path_parts[1]
-        photo_id = path_parts[-1]
+        photo_id = '/'.join(path_parts[2:])  # e.g. "2026/06/28/filename.png"
 
         # Skip thumbnails (avoid infinite loop)
         if "thumbnails/" in blob_name:

@@ -1,55 +1,67 @@
 # Daily Cloud Photo — Azure Backend
 
-> Requires an Azure account ([create free](https://azure.microsoft.com/free/))
-
-## One-Click Deploy
-
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json)
-
-### Quick Start
-
-1. Click the **Deploy to Azure** button above
-2. Fill in parameters (defaults work fine) → **Review + create** → **Create**
-3. After deployment (~3-5 min), go to **Outputs** tab → copy `functionAppName`
-4. Deploy the function code:
-   ```bash
-   cd function_app
-   func azure functionapp publish <functionAppName> --python
-   ```
-5. Copy `apiEndpoint` from the Outputs tab into the app
+- [English](#english)
+- [日本語](#日本語)
 
 ---
 
-## Parameters
+## English
+
+> Requires an Azure account ([create free](https://azure.microsoft.com/free/))
+
+### Quick Start
+
+[![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
+
+1. Click the **Open in Cloud Shell** button above
+2. Clone and deploy:
+   ```bash
+   git clone https://github.com/daily-cloud-app/photo.git
+   cd photo/azure
+   chmod +x deploy.sh && ./deploy.sh daily-cloud-photo-rg japaneast
+   ```
+3. Copy the API endpoint URL from the output into the app
+
+### Parameters
+
+You can customize the deployment by passing arguments to deploy.sh:
+
+```bash
+./deploy.sh <RESOURCE_GROUP> <LOCATION> <APP_NAME>
+```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| appName | `dailycloudphoto` | Base name for all resources |
-| location | Resource group location | Azure region |
-| jwtSecret | Auto-generated | Secret key for JWT signing |
-| accessTokenExpireMinutes | `60` | Access token lifetime (minutes) |
-| refreshTokenExpireDays | `30` | Refresh token lifetime (days) |
+| RESOURCE_GROUP | `daily-cloud-photo-rg` | Azure resource group name |
+| LOCATION | `eastus` | Azure region |
+| APP_NAME | `dailycloudphoto` | Base name for all resources |
+
+ARM template parameters (set in Azure Portal or via `--parameters`):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| jwtSecret | (auto-generated) | Secret key for JWT signing |
+| accessTokenExpireMinutes | `60` | Access token lifetime |
+| refreshTokenExpireDays | `30` | Refresh token lifetime |
 | requireEmail | `true` | Require email for signup |
 | requirePhone | `false` | Require phone number for signup |
 | enableShareUrl | `true` | Enable upload URL sharing feature |
 | enableLabelSharing | `true` | Enable label sharing between users |
 | appDisplayName | `Daily Cloud Photo Backend` | Display name shown in the app |
 
-## Connecting the App
+### Connecting the App
 
-1. Open Drawer → **Settings** → Enter the endpoint URL → **Save**
+1. **Settings** → Enter the endpoint URL → **Save**
 2. Run **Connection Test**
-3. Drawer → **Login** → Create account
+3. **Login** → Create account
 
-## Deleting Resources
+### Deleting Resources
 
 ```bash
 az group delete --name daily-cloud-photo-rg --yes --no-wait
 ```
 
-> This permanently deletes all data (photos, users, metadata).
-
-## Architecture
+### Architecture
 
 ```
 User → Azure Functions (HTTP) → Main Handler (route dispatch)
@@ -64,7 +76,7 @@ User → Azure Functions (HTTP) → Main Handler (route dispatch)
 - Direct upload to Blob Storage via SAS URLs (no function proxy)
 - Blob trigger automatically extracts EXIF date + generates thumbnails
 
-## Cost Estimate
+### Cost Estimate
 
 All services use serverless/consumption pricing. Low usage is extremely cheap.
 
@@ -77,17 +89,112 @@ These are estimates only. Actual costs depend on usage patterns and may vary. Al
 | Blob Storage | ~$0.02/GB/month (Hot tier) |
 | Application Insights | 5 GB/month |
 
-**Estimated monthly cost for personal use (< 1000 photos):** $1–5/month
+### Security Recommendations for Production
 
-## Security Recommendations for Production
-
-The template includes basic security (HTTPS-only, no public blob access, TLS 1.2).
-For production use, also consider:
+These are examples only — not an exhaustive list. Evaluate your own requirements and apply additional measures as needed.
 
 - **JWT Secret rotation**: Periodically rotate the JWT_SECRET app setting
-- **Network restrictions**: Use Azure Private Endpoints for Cosmos DB
-- **WAF**: Place Azure Front Door with WAF in front of the Function App
+- **Network restrictions**: Use Azure Private Endpoints for Cosmos DB ([docs](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-configure-private-endpoints))
+- **WAF**: Place Azure Front Door with WAF in front of the Function App ([docs](https://learn.microsoft.com/en-us/azure/web-application-firewall/overview))
 - **CORS restriction**: Limit allowed origins to specific domains
 - **Rate limiting**: Configure Azure API Management or custom middleware
-- **Key Vault**: Store secrets in Azure Key Vault instead of app settings
+- **Key Vault**: Store secrets in Azure Key Vault instead of app settings ([docs](https://learn.microsoft.com/en-us/azure/key-vault/general/overview))
 - **Share URL limits**: Consider adding file size limits, upload count limits, and Content-Type validation
+
+---
+
+## 日本語
+
+> Azure アカウントが必要です（[無料で作成](https://azure.microsoft.com/free/)）
+
+### クイックスタート
+
+[![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
+
+1. 上記の **Open in Cloud Shell** ボタンをクリック
+2. クローンしてデプロイ:
+   ```bash
+   git clone https://github.com/daily-cloud-app/photo.git
+   cd photo/azure
+   chmod +x deploy.sh && ./deploy.sh daily-cloud-photo-rg japaneast
+   ```
+3. 出力された API エンドポイント URL をアプリに入力
+
+### パラメータ一覧
+
+deploy.sh に引数を渡してカスタマイズが可能です:
+
+```bash
+./deploy.sh <リソースグループ> <リージョン> <アプリ名>
+```
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| RESOURCE_GROUP | `daily-cloud-photo-rg` | リソースグループ名 |
+| LOCATION | `eastus` | Azure リージョン |
+| APP_NAME | `dailycloudphoto` | リソース名のベース |
+
+ARM テンプレートのパラメータ:
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| jwtSecret | (自動生成) | JWT 署名用シークレット |
+| accessTokenExpireMinutes | `60` | アクセストークン有効期間（分） |
+| refreshTokenExpireDays | `30` | リフレッシュトークン有効期間（日） |
+| requireEmail | `true` | サインアップ時にメール必須 |
+| requirePhone | `false` | サインアップ時に電話番号必須 |
+| enableShareUrl | `true` | アップロード URL 共有機能 |
+| enableLabelSharing | `true` | ラベル共有機能 |
+| appDisplayName | `Daily Cloud Photo Backend` | アプリでの表示名 |
+
+### アプリでの接続
+
+1. **設定** → エンドポイント URL を入力 → **保存**
+2. **接続テスト** で確認
+3. **ログイン** からアカウント作成
+
+### リソースの削除
+
+```bash
+az group delete --name daily-cloud-photo-rg --yes --no-wait
+```
+
+### アーキテクチャ
+
+```
+ユーザー → Azure Functions (HTTP) → メインハンドラー (ルートディスパッチ)
+                                        ├── Custom JWT Auth (bcrypt + PyJWT)
+                                        ├── Blob Storage (写真保存 + サムネイル)
+                                        ├── Cosmos DB (メタデータ)
+                                        └── Blob Trigger 関数 (EXIF + サムネイル生成)
+```
+
+- 全 API を1つの Function App で処理（パスベースルーティング）
+- ユーザーの写真は `users/{uid}/` プレフィックスで分離
+- SAS URL で Blob Storage に直接アップロード（関数を経由しない）
+- Blob トリガーで自動的に EXIF 解析 + サムネイル生成
+
+### コスト目安
+
+すべてサーバーレス従量課金。少量利用なら非常に安価。
+
+以下はあくまで目安です。実際の費用は利用状況により異なります。各クラウドプロバイダーの請求ダッシュボードを定期的に確認してください。
+
+| サービス | 無料枠 |
+|----------|--------|
+| Azure Functions | 月100万実行 |
+| Cosmos DB | 1000 RU/s 無料枠あり |
+| Blob Storage | ~$0.02/GB/月（ホット層） |
+| Application Insights | 月5 GB |
+
+### 本番運用時のセキュリティ推奨事項
+
+以下は一例であり、これだけで十分というわけではありません。要件に応じて追加の対策を検討してください。
+
+- **JWT シークレットのローテーション**: 定期的に JWT_SECRET を変更 
+- **ネットワーク制限**: Cosmos DB に Azure Private Endpoints を使用 ([docs](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-configure-private-endpoints))
+- **WAF**: Azure Front Door + WAF を Function App の前に配置 ([docs](https://learn.microsoft.com/en-us/azure/web-application-firewall/overview))
+- **CORS の制限**: 許可するオリジンを特定ドメインに限定
+- **レート制限**: Azure API Management またはカスタムミドルウェアで設定
+- **Key Vault**: アプリ設定の代わりに Azure Key Vault でシークレット管理 ([docs](https://learn.microsoft.com/en-us/azure/key-vault/general/overview))
+- **共有 URL の制限**: ファイルサイズ制限、アップロード回数制限、Content-Type 検証の追加を検討

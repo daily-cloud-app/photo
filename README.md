@@ -3,6 +3,8 @@
 Sample backend implementations for the Daily Cloud Photo app. 
 These are reference implementations to help you get started — feel free to modify or use them as a base for your own setup.
 
+All implementations have been verified with the app for basic operations (signup, upload, cloud sync, label sharing, storage trigger).
+
 ## Providers
 
 These implementations are provided as samples.

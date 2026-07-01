@@ -24,27 +24,15 @@
 
 ### Parameters
 
-You can customize the deployment by passing arguments to deploy.sh:
-
-```bash
-./deploy.sh <RESOURCE_GROUP> <LOCATION> <APP_NAME>
-```
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) You can also deploy via the Azure Portal GUI — fill in all parameters through the form.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| RESOURCE_GROUP | `daily-cloud-photo-rg` | Azure resource group name |
-| LOCATION | `eastus` | Azure region |
-| APP_NAME | `dailycloudphoto` | Base name for all resources |
-
-ARM template parameters (set in Azure Portal or via `--parameters`):
-
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) You can also deploy via the Azure Portal GUI — fill in parameters through the form.
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
+| appName | `dailycloudphoto` | Base name for all resources |
+| location | Resource group location | Azure region |
 | jwtSecret | (auto-generated) | Secret key for JWT signing |
-| accessTokenExpireMinutes | `60` | Access token lifetime |
-| refreshTokenExpireDays | `30` | Refresh token lifetime |
+| accessTokenExpireMinutes | `60` | Access token lifetime (minutes) |
+| refreshTokenExpireDays | `30` | Refresh token lifetime (days) |
 | requireEmail | `true` | Require email for signup |
 | requirePhone | `false` | Require phone number for signup |
 | enableShareUrl | `true` | Enable upload URL sharing feature |
@@ -124,24 +112,12 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 ### パラメータ一覧
 
-deploy.sh に引数を渡してカスタマイズが可能です:
-
-```bash
-./deploy.sh <リソースグループ> <リージョン> <アプリ名>
-```
-
-| パラメータ | デフォルト | 説明 |
-|-----------|-----------|------|
-| RESOURCE_GROUP | `daily-cloud-photo-rg` | リソースグループ名 |
-| LOCATION | `eastus` | Azure リージョン |
-| APP_NAME | `dailycloudphoto` | リソース名のベース |
-
-ARM テンプレートのパラメータ:
-
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) GUI でデプロイする場合は、Azure ポータルからパラメータをフォームで入力できます。
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
+| appName | `dailycloudphoto` | リソース名のベース |
+| location | リソースグループの場所 | Azure リージョン |
 | jwtSecret | (自動生成) | JWT 署名用シークレット |
 | accessTokenExpireMinutes | `60` | アクセストークン有効期間（分） |
 | refreshTokenExpireDays | `30` | リフレッシュトークン有効期間（日） |

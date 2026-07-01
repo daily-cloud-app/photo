@@ -38,6 +38,8 @@ You can customize the deployment by passing arguments to deploy.sh:
 
 ARM template parameters (set in Azure Portal or via `--parameters`):
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) You can also deploy via the Azure Portal GUI — fill in parameters through the form.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | jwtSecret | (auto-generated) | Secret key for JWT signing |
@@ -135,6 +137,8 @@ deploy.sh に引数を渡してカスタマイズが可能です:
 | APP_NAME | `dailycloudphoto` | リソース名のベース |
 
 ARM テンプレートのパラメータ:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) GUI でデプロイする場合は、Azure ポータルからパラメータをフォームで入力できます。
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|

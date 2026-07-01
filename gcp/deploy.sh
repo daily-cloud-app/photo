@@ -92,7 +92,16 @@ else
     gcloud firestore databases create \
         --location="${REGION}" \
         --project="${PROJECT_ID}" \
-        --quiet 2>/dev/null || echo -e "  ${GREEN}✓ Firestore already configured${NC}"
+        --quiet 2>/dev/null || true
+
+    # Wait until Firestore is ready
+    echo -e "  Waiting for Firestore to be ready..."
+    for i in {1..30}; do
+        if gcloud firestore databases describe --project="${PROJECT_ID}" 2>/dev/null | grep -q "FIRESTORE_NATIVE"; then
+            break
+        fi
+        sleep 10
+    done
 fi
 
 # Create composite index for userId + photoId queries

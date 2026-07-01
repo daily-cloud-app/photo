@@ -228,7 +228,7 @@ gcloud functions deploy "${TRIGGER_FUNCTION_NAME}" \
     --gen2 \
     --runtime=python312 \
     --region="${REGION}" \
-    --source=./functions \
+    --source=./trigger \
     --entry-point=storage_trigger_handler \
     --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
     --trigger-event-filters="bucket=${BUCKET_NAME}" \

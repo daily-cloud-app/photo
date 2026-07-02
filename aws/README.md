@@ -13,7 +13,7 @@
 
 [![Open in CloudShell](https://img.shields.io/badge/AWS-CloudShell-orange?logo=amazonaws)](https://console.aws.amazon.com/cloudshell/home)
 
-1. Click the **Open in CloudShell** button above
+1. Click the **CloudShell** button above
 2. Run the following commands:
    ```bash
    curl -sO https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/template.yaml
@@ -114,7 +114,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in CloudShell](https://img.shields.io/badge/AWS-CloudShell-orange?logo=amazonaws)](https://console.aws.amazon.com/cloudshell/home)
 
-1. 上記の **Open in CloudShell** ボタンをクリック
+1. 上記の **CloudShell** ボタンをクリック
 2. 以下を実行:
    ```bash
    curl -sO https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/template.yaml

@@ -13,7 +13,7 @@
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-1. Click the **Open in Cloud Shell** button above
+1. Click the **Cloud Shell** button above
 2. Create a project and link billing:
    ```bash
    gcloud projects create daily-cloud-app --name="Daily Cloud App"
@@ -114,7 +114,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-1. 上記の **Open in Cloud Shell** ボタンをクリック
+1. 上記の **Cloud Shell** ボタンをクリック
 2. プロジェクトを作成し、課金を有効化:
    ```bash
    gcloud projects create daily-cloud-app --name="Daily Cloud App"

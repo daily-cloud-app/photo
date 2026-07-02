@@ -13,7 +13,7 @@
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
 
-1. Click the **Open in Cloud Shell** button above
+1. Click the **Cloud Shell** button above
 2. Clone and deploy:
    ```bash
    git clone https://github.com/daily-cloud-app/photo.git
@@ -24,7 +24,9 @@
 
 ### Parameters
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) You can also deploy via the Azure Portal GUI — fill in all parameters through the form.
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) 
+
+You can also deploy via the Azure Portal GUI — fill in all parameters through the form.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -101,7 +103,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
 
-1. 上記の **Open in Cloud Shell** ボタンをクリック
+1. 上記の **Cloud Shell** ボタンをクリック
 2. クローンしてデプロイ:
    ```bash
    git clone https://github.com/daily-cloud-app/photo.git
@@ -112,7 +114,9 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 ### パラメータ一覧
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) GUI でデプロイする場合は、Azure ポータルからパラメータをフォームで入力できます。
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdaily-cloud-app%2Fphoto%2Fmain%2Fazure%2Fazuredeploy.json) 
+
+GUI でデプロイする場合は、Azure ポータルからパラメータをフォームで入力できます。
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|

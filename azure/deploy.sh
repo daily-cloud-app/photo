@@ -59,6 +59,12 @@ echo ""
 
 # ── Step 2: Create Resource Group ──
 echo "[2/6] Creating resource group..."
+
+# Register required resource providers
+az provider register --namespace microsoft.operationalinsights --wait 2>/dev/null || true
+az provider register --namespace Microsoft.DocumentDB --wait 2>/dev/null || true
+az provider register --namespace Microsoft.Web --wait 2>/dev/null || true
+
 az group create \
     --name "$RESOURCE_GROUP" \
     --location "$LOCATION" \

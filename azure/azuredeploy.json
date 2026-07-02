@@ -219,7 +219,7 @@
               { "path": "/userId/?" },
               { "path": "/status/?" },
               { "path": "/createdAt/?" },
-              { "path": "/labels/[]" }
+              { "path": "/labels/?" }
             ],
             "excludedPaths": [
               { "path": "/*" }

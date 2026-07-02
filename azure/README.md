@@ -16,8 +16,8 @@
 1. Click the **Cloud Shell** button above
 2. Clone and deploy:
    ```bash
-   git clone https://github.com/daily-cloud-app/photo.git
-   cd photo/azure
+   [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
+   cd photo && git pull --ff-only && cd azure
    chmod +x deploy.sh && ./deploy.sh daily-cloud-photo-rg japaneast
    ```
 3. Copy the API endpoint URL from the output into the app
@@ -106,8 +106,8 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 1. 上記の **Cloud Shell** ボタンをクリック
 2. クローンしてデプロイ:
    ```bash
-   git clone https://github.com/daily-cloud-app/photo.git
-   cd photo/azure
+   [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
+   cd photo && git pull --ff-only && cd azure
    chmod +x deploy.sh && ./deploy.sh daily-cloud-photo-rg japaneast
    ```
 3. 出力された API エンドポイント URL をアプリに入力

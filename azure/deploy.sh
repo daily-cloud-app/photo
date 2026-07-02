@@ -4,7 +4,7 @@
 #
 # Prerequisites:
 #   - Azure CLI installed and logged in (az login)
-#   - Azure Functions Core Tools installed (func)
+#   - Azure Functions Core Tools installed (func) — optional
 #   - Python 3.11+
 #
 # Usage:
@@ -29,8 +29,167 @@ echo " Location:       $LOCATION"
 echo " App Name:       $APP_NAME"
 echo ""
 
-# ── Step 1: Check prerequisites ──
-echo "[1/6] Checking prerequisites..."
+# ============================================================
+# Utility Functions
+# ============================================================
+
+# ── ensure_provider_registered ──
+# Ensures a resource provider namespace is registered.
+# Usage: ensure_provider_registered "Microsoft.Quota"
+ensure_provider_registered() {
+    local namespace="$1"
+    local max_wait="${2:-300}"  # default 5 minutes
+    local interval=5
+
+    local state
+    state=$(az provider show --namespace "$namespace" --query "registrationState" -o tsv 2>/dev/null || echo "NotRegistered")
+
+    if [ "$state" = "Registered" ]; then
+        return 0
+    fi
+
+    echo "  Registering resource provider: $namespace ..."
+    az provider register --namespace "$namespace" 2>/dev/null || true
+
+    local elapsed=0
+    while [ "$elapsed" -lt "$max_wait" ]; do
+        state=$(az provider show --namespace "$namespace" --query "registrationState" -o tsv 2>/dev/null || echo "")
+        if [ "$state" = "Registered" ]; then
+            echo "  $namespace registered."
+            return 0
+        fi
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+    done
+
+    echo "ERROR: Timed out waiting for $namespace to register (${max_wait}s)."
+    echo "  Current state: $state"
+    echo "  Try again later or register manually:"
+    echo "    az provider register --namespace $namespace --wait"
+    exit 1
+}
+
+# ── ensure_appservice_quota ──
+# Checks and (if needed) increases the App Service plan quota for a given SKU.
+# This prevents SubscriptionIsOverQuotaForSku during ARM deployment.
+#
+# Usage: ensure_appservice_quota "Y1" 1
+#   $1 = SKU resource name (e.g. Y1, B1, EP1)
+#   $2 = minimum required limit (default: 1)
+ensure_appservice_quota() {
+    local sku_name="${1:-Y1}"
+    local required_limit="${2:-1}"
+    local max_wait=300  # 5 minutes
+    local interval=10
+
+    local subscription_id
+    subscription_id=$(az account show --query id -o tsv)
+
+    local scope="/subscriptions/${subscription_id}/providers/Microsoft.Web/locations/${LOCATION}"
+
+    echo "  Checking App Service quota: $sku_name (location: $LOCATION) ..."
+
+    # Ensure the quota extension is available
+    if ! az quota show --help &>/dev/null; then
+        echo "  Installing Azure CLI quota extension..."
+        az extension add --name quota --yes 2>/dev/null || true
+    fi
+
+    # Get current quota for the SKU
+    local current_limit
+    current_limit=$(az quota show \
+        --resource-name "$sku_name" \
+        --scope "$scope" \
+        --query "properties.limit.value" \
+        -o tsv 2>/dev/null || echo "")
+
+    # If we can't read the quota, try listing all and grep
+    if [ -z "$current_limit" ] || [ "$current_limit" = "None" ]; then
+        current_limit=$(az quota list \
+            --scope "$scope" \
+            --query "[?properties.name.value=='$sku_name'].properties.limit.value | [0]" \
+            -o tsv 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$current_limit" ] || [ "$current_limit" = "None" ]; then
+        echo "  WARNING: Could not retrieve current quota for $sku_name."
+        echo "  The Microsoft.Quota API may not support Microsoft.Web in this region."
+        echo "  Proceeding with ARM deployment — it may fail if quota is 0."
+        echo ""
+        echo "  If deployment fails with SubscriptionIsOverQuotaForSku:"
+        echo "    1. Go to https://portal.azure.com → Quotas → Compute"
+        echo "    2. Request an increase for Dynamic VM quota in '$LOCATION'"
+        echo "    3. Or try a different region (e.g., eastus, westeurope)"
+        echo ""
+        return 0
+    fi
+
+    echo "  Current $sku_name quota: $current_limit (required: >= $required_limit)"
+
+    if [ "$current_limit" -ge "$required_limit" ] 2>/dev/null; then
+        echo "  Quota is sufficient."
+        return 0
+    fi
+
+    # Quota is insufficient — request an increase
+    echo "  Requesting quota increase: $sku_name → $required_limit ..."
+
+    local update_result
+    update_result=$(az quota update \
+        --resource-name "$sku_name" \
+        --scope "$scope" \
+        --limit-object value="$required_limit" \
+        --no-wait false \
+        -o json 2>&1)
+
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo "ERROR: Failed to update quota for $sku_name."
+        echo "$update_result"
+        echo ""
+        echo "  Possible causes:"
+        echo "    - Subscription type doesn't allow self-service quota increase"
+        echo "    - Microsoft.Quota API doesn't support Microsoft.Web in this region"
+        echo ""
+        echo "  Manual fix:"
+        echo "    1. Go to https://portal.azure.com → Quotas"
+        echo "    2. Search for 'Dynamic' or '$sku_name' under Compute"
+        echo "    3. Request increase to at least $required_limit"
+        echo "    4. Re-run this script after approval"
+        exit 1
+    fi
+
+    echo "  Quota update request submitted. Waiting for propagation..."
+
+    # Poll until quota is updated
+    local elapsed=0
+    while [ "$elapsed" -lt "$max_wait" ]; do
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+
+        current_limit=$(az quota show \
+            --resource-name "$sku_name" \
+            --scope "$scope" \
+            --query "properties.limit.value" \
+            -o tsv 2>/dev/null || echo "0")
+
+        if [ "$current_limit" -ge "$required_limit" ] 2>/dev/null; then
+            echo "  $sku_name quota is now $current_limit. Ready to deploy."
+            return 0
+        fi
+        echo "  Still waiting... ($elapsed/${max_wait}s, current: $current_limit)"
+    done
+
+    echo "ERROR: Timed out waiting for quota increase to take effect."
+    echo "  Check status: az quota request list --scope \"$scope\""
+    echo "  Or visit: https://portal.azure.com → Quotas"
+    exit 1
+}
+
+# ============================================================
+# Step 1: Check prerequisites
+# ============================================================
+echo "[1/7] Checking prerequisites..."
 
 if ! command -v az &> /dev/null; then
     echo "ERROR: Azure CLI (az) is not installed."
@@ -57,13 +216,32 @@ echo "  Logged in as: $(az account show --query user.name -o tsv)"
 echo "  Subscription: $(az account show --query name -o tsv)"
 echo ""
 
-# ── Step 2: Create Resource Group ──
-echo "[2/6] Creating resource group..."
+# ============================================================
+# Step 2: Register resource providers
+# ============================================================
+echo "[2/7] Registering resource providers..."
 
-# Register required resource providers
-az provider register --namespace microsoft.operationalinsights --wait 2>/dev/null || true
-az provider register --namespace Microsoft.DocumentDB --wait 2>/dev/null || true
-az provider register --namespace Microsoft.Web --wait 2>/dev/null || true
+ensure_provider_registered "Microsoft.Web"
+ensure_provider_registered "Microsoft.DocumentDB"
+ensure_provider_registered "microsoft.operationalinsights"
+ensure_provider_registered "Microsoft.Quota"
+
+echo "  All providers registered."
+echo ""
+
+# ============================================================
+# Step 3: Ensure App Service quota
+# ============================================================
+echo "[3/7] Ensuring App Service quota (Y1 Dynamic) ..."
+
+ensure_appservice_quota "Y1" 1
+
+echo ""
+
+# ============================================================
+# Step 4: Create Resource Group
+# ============================================================
+echo "[4/7] Creating resource group..."
 
 az group create \
     --name "$RESOURCE_GROUP" \
@@ -72,8 +250,10 @@ az group create \
 echo "  Resource group '$RESOURCE_GROUP' ready."
 echo ""
 
-# ── Step 3: Deploy ARM Template ──
-echo "[3/6] Deploying ARM template (this may take 3-5 minutes)..."
+# ============================================================
+# Step 5: Deploy ARM Template
+# ============================================================
+echo "[5/7] Deploying ARM template (this may take 3-5 minutes)..."
 DEPLOYMENT_OUTPUT=$(az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --template-file "$TEMPLATE_FILE" \
@@ -95,8 +275,10 @@ echo "  API Endpoint: $API_ENDPOINT"
 echo "  Storage:      $STORAGE_ACCOUNT"
 echo ""
 
-# ── Step 4: Deploy Function App Code ──
-echo "[4/6] Deploying function app code..."
+# ============================================================
+# Step 6: Deploy Function App Code
+# ============================================================
+echo "[6/7] Deploying function app code..."
 
 if [ "$USE_FUNC_TOOLS" = true ]; then
     # Deploy using Azure Functions Core Tools
@@ -126,8 +308,10 @@ fi
 echo "  Code deployed successfully."
 echo ""
 
-# ── Step 5: Wait for function app to start ──
-echo "[5/6] Waiting for function app to start..."
+# ============================================================
+# Step 7: Wait for function app to start & summary
+# ============================================================
+echo "[7/7] Waiting for function app to start..."
 sleep 10
 
 # Test the /info endpoint
@@ -148,9 +332,6 @@ else
 fi
 echo ""
 
-# ── Step 6: Print summary ──
-echo "[6/6] Deployment complete!"
-echo ""
 echo "=============================================="
 echo " DEPLOYMENT SUMMARY"
 echo "=============================================="

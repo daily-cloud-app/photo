@@ -13,6 +13,9 @@
 
 set -e
 
+# ── Disable interactive extension prompts ──
+az config set extension.use_dynamic_install=no_without_prompt >/dev/null 2>&1 || true
+
 # ── Configuration ──
 RESOURCE_GROUP="${1:-daily-cloud-photo-rg}"
 LOCATION="${2:-eastus}"
@@ -90,9 +93,13 @@ ensure_appservice_quota() {
     echo "  Checking App Service quota: $sku_name (location: $LOCATION) ..."
 
     # Ensure the quota extension is available
-    if ! az quota show --help &>/dev/null; then
+    if ! az extension show --name quota >/dev/null 2>&1; then
         echo "  Installing Azure CLI quota extension..."
-        az extension add --name quota --yes 2>/dev/null || true
+        az extension add --name quota --allow-preview true --yes 2>/dev/null || {
+            echo "ERROR: Failed to install the 'quota' extension for Azure CLI."
+            echo "  Try manually: az extension add --name quota --allow-preview true"
+            exit 1
+        }
     fi
 
     # Get current quota for the SKU

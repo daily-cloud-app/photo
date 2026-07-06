@@ -42,7 +42,7 @@ def _get_blob_service():
 @bp.blob_trigger(
     arg_name="blob",
     path=f"{STORAGE_CONTAINER}/users/{{userId}}/{{*blobPath}}",
-    connection="STORAGE_CONNECTION",
+    connection="AzureWebJobsStorage",
 )
 def process_photo(blob: func.InputStream):
     """

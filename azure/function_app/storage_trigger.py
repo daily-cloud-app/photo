@@ -21,8 +21,8 @@ STORAGE_CONNECTION = os.environ.get("STORAGE_CONNECTION", "")
 STORAGE_CONTAINER = os.environ.get("STORAGE_CONTAINER", "photos")
 THUMBNAIL_MAX_SIZE = int(os.environ.get("THUMBNAIL_MAX_SIZE", "400"))
 
-# ── Azure Functions App (separate app for blob trigger) ──
-app = func.FunctionApp()
+# ── Azure Functions App (import from main module) ──
+from function_app import app
 
 
 def _get_cosmos_container(name: str):

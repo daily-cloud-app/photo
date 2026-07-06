@@ -1349,3 +1349,9 @@ def _build_upload_page_html(token: str, api_base: str) -> str:
     </script>
 </body>
 </html>"""
+
+
+# ============================================================
+# Blob Storage Trigger (imported from storage_trigger.py)
+# ============================================================
+import storage_trigger  # noqa: F401, E402

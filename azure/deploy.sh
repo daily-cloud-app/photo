@@ -1,5 +1,5 @@
 #!/bin/bash
-# Daily Cloud Photo — Azure Deployment Script
+# Daily Cloud Photo 窶・Azure Deployment Script
 # Deploys the complete backend infrastructure and function app code.
 #
 # Prerequisites:
@@ -12,10 +12,10 @@
 
 set -e
 
-# ── Disable interactive extension prompts ──
+# 笏笏 Disable interactive extension prompts 笏笏
 az config set extension.use_dynamic_install=no_without_prompt >/dev/null 2>&1 || true
 
-# ── Configuration ──
+# 笏笏 Configuration 笏笏
 RESOURCE_GROUP="${1:-daily-cloud-photo-rg}"
 LOCATION="${2:-eastus}"
 APP_NAME="${3:-dailycloudphoto}"
@@ -23,7 +23,7 @@ TEMPLATE_FILE="./azuredeploy.json"
 FUNCTION_APP_DIR="./function_app"
 
 echo "=============================================="
-echo " Daily Cloud Photo — Azure Deployment"
+echo " Daily Cloud Photo 窶・Azure Deployment"
 echo "=============================================="
 echo ""
 echo " Resource Group: $RESOURCE_GROUP"
@@ -35,7 +35,7 @@ echo ""
 # Utility Functions
 # ============================================================
 
-# ── ensure_provider_registered ──
+# 笏笏 ensure_provider_registered 笏笏
 # Ensures a resource provider namespace is registered.
 # Usage: ensure_provider_registered "Microsoft.Quota"
 ensure_provider_registered() {
@@ -71,7 +71,7 @@ ensure_provider_registered() {
     exit 1
 }
 
-# ── ensure_appservice_quota ──
+# 笏笏 ensure_appservice_quota 笏笏
 # Checks and (if needed) increases the App Service plan quota for a given SKU.
 # This prevents SubscriptionIsOverQuotaForSku during ARM deployment.
 #
@@ -120,10 +120,10 @@ ensure_appservice_quota() {
     if [ -z "$current_limit" ] || [ "$current_limit" = "None" ]; then
         echo "  WARNING: Could not retrieve current quota for $sku_name."
         echo "  The Microsoft.Quota API may not support Microsoft.Web in this region."
-        echo "  Proceeding with ARM deployment — it may fail if quota is 0."
+        echo "  Proceeding with ARM deployment 窶・it may fail if quota is 0."
         echo ""
         echo "  If deployment fails with SubscriptionIsOverQuotaForSku:"
-        echo "    1. Go to https://portal.azure.com → Quotas → Compute"
+        echo "    1. Go to https://portal.azure.com 竊・Quotas 竊・Compute"
         echo "    2. Request an increase for Dynamic VM quota in '$LOCATION'"
         echo "    3. Or try a different region (e.g., eastus, westeurope)"
         echo ""
@@ -137,8 +137,8 @@ ensure_appservice_quota() {
         return 0
     fi
 
-    # Quota is insufficient — request an increase
-    echo "  Requesting quota increase: $sku_name → $required_limit ..."
+    # Quota is insufficient 窶・request an increase
+    echo "  Requesting quota increase: $sku_name 竊・$required_limit ..."
 
     local update_result
     update_result=$(az quota update \
@@ -158,7 +158,7 @@ ensure_appservice_quota() {
         echo "    - Microsoft.Quota API doesn't support Microsoft.Web in this region"
         echo ""
         echo "  Manual fix:"
-        echo "    1. Go to https://portal.azure.com → Quotas"
+        echo "    1. Go to https://portal.azure.com 竊・Quotas"
         echo "    2. Search for 'Dynamic' or '$sku_name' under Compute"
         echo "    3. Request increase to at least $required_limit"
         echo "    4. Re-run this script after approval"
@@ -188,14 +188,14 @@ ensure_appservice_quota() {
 
     echo "ERROR: Timed out waiting for quota increase to take effect."
     echo "  Check status: az quota request list --scope \"$scope\""
-    echo "  Or visit: https://portal.azure.com → Quotas"
+    echo "  Or visit: https://portal.azure.com 竊・Quotas"
     exit 1
 }
 
 # ============================================================
 # Step 1: Check prerequisites
 # ============================================================
-echo "[1/7] Checking prerequisites..."
+echo "[1/8] Checking prerequisites..."
 
 if ! command -v az &> /dev/null; then
     echo "ERROR: Azure CLI (az) is not installed."
@@ -216,7 +216,7 @@ echo ""
 # ============================================================
 # Step 2: Register resource providers
 # ============================================================
-echo "[2/7] Registering resource providers..."
+echo "[2/8] Registering resource providers..."
 
 ensure_provider_registered "Microsoft.Web"
 ensure_provider_registered "Microsoft.DocumentDB"
@@ -229,7 +229,7 @@ echo ""
 # ============================================================
 # Step 3: Ensure App Service quota
 # ============================================================
-echo "[3/7] Ensuring App Service quota (Y1 Dynamic) ..."
+echo "[3/8] Ensuring App Service quota (Y1 Dynamic) ..."
 
 ensure_appservice_quota "Y1" 1
 
@@ -238,7 +238,7 @@ echo ""
 # ============================================================
 # Step 4: Create Resource Group
 # ============================================================
-echo "[4/7] Creating resource group..."
+echo "[4/8] Creating resource group..."
 
 az group create \
     --name "$RESOURCE_GROUP" \
@@ -250,7 +250,7 @@ echo ""
 # ============================================================
 # Step 5: Deploy ARM Template
 # ============================================================
-echo "[5/7] Deploying ARM template (this may take 3-5 minutes)..."
+echo "[5/8] Deploying ARM template (this may take 3-5 minutes)..."
 DEPLOYMENT_OUTPUT=$(az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --template-file "$TEMPLATE_FILE" \
@@ -275,15 +275,15 @@ echo ""
 # ============================================================
 # Step 6: Deploy Function App Code
 # ============================================================
-echo "[6/7] Deploying function app code..."
+echo "[6/8] Deploying function app code..."
 
-# ARM デプロイ直後は Function App の準備が完了していない場合がある
+# ARM 繝・・繝ｭ繧､逶ｴ蠕後・ Function App 縺ｮ貅門ｙ縺悟ｮ御ｺ・＠縺ｦ縺・↑縺・ｴ蜷医′縺ゅｋ
 echo "  Waiting for Function App to be ready..."
 RETRY=0
 while [ $RETRY -lt 24 ]; do
     APP_STATE=$(az functionapp show --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "state" -o tsv 2>/dev/null || echo "")
     if [ "$APP_STATE" = "Running" ]; then
-        # SCM サイト（Kudu）が応答するまで追加で待つ
+        # SCM 繧ｵ繧､繝茨ｼ・udu・峨′蠢懃ｭ斐☆繧九∪縺ｧ霑ｽ蜉縺ｧ蠕・▽
         SCM_URL="https://${FUNCTION_APP_NAME}.scm.azurewebsites.net/"
         SCM_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$SCM_URL" 2>/dev/null || echo "000")
         if [ "$SCM_CODE" != "000" ] && [ "$SCM_CODE" != "502" ] && [ "$SCM_CODE" != "503" ]; then
@@ -298,9 +298,8 @@ if [ $RETRY -ge 24 ]; then
     echo "  WARNING: Function App may not be fully ready, attempting deploy anyway..."
 fi
 
-# az CLI の zip デプロイを使用（func ツールの squashfs デプロイは
-# WEBSITE_CONTENT* 設定を削除するため Blob Trigger が動作しなくなる）
-echo "  Creating deployment package..."
+# az CLI 縺ｮ zip 繝・・繝ｭ繧､繧剃ｽｿ逕ｨ・・unc 繝・・繝ｫ縺ｮ squashfs 繝・・繝ｭ繧､縺ｯ
+# WEBSITE_CONTENT* 險ｭ螳壹ｒ蜑企勁縺吶ｋ縺溘ａ Blob Trigger 縺悟虚菴懊＠縺ｪ縺上↑繧具ｼ・echo "  Creating deployment package..."
 DEPLOY_ZIP="/tmp/daily-cloud-photo-azure.zip"
 rm -f "$DEPLOY_ZIP"
 
@@ -322,9 +321,61 @@ echo "  Code deployed successfully."
 echo ""
 
 # ============================================================
-# Step 7: Wait for function app to start & summary
+# Step 7: Create Event Grid Subscription for Storage Trigger
 # ============================================================
-echo "[7/7] Waiting for function app to start..."
+echo "[7/8] Setting up Event Grid subscription for blob trigger..."
+
+# Register Event Grid provider
+az provider register --namespace Microsoft.EventGrid 2>/dev/null || true
+
+# blobs_extension 繧ｷ繧ｹ繝・Β繧ｭ繝ｼ繧貞叙蠕暦ｼ・ebhook 隱崎ｨｼ逕ｨ・・echo "  Waiting for function keys to be available..."
+BLOB_KEY=""
+KEY_RETRY=0
+while [ -z "$BLOB_KEY" ] && [ $KEY_RETRY -lt 12 ]; do
+    BLOB_KEY=$(az functionapp keys list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "systemKeys.blobs_extension" -o tsv 2>/dev/null || echo "")
+    if [ -z "$BLOB_KEY" ] || [ "$BLOB_KEY" = "null" ]; then
+        BLOB_KEY=""
+        sleep 10
+        KEY_RETRY=$((KEY_RETRY+1))
+    fi
+done
+
+if [ -z "$BLOB_KEY" ]; then
+    echo "  WARNING: Could not retrieve blobs_extension key."
+    echo "  Event Grid subscription must be created manually."
+    echo "  See: https://learn.microsoft.com/en-us/azure/azure-functions/functions-event-grid-blob-trigger"
+else
+    ENDPOINT_URL="https://${FUNCTION_APP_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_photo&code=${BLOB_KEY}"
+    STORAGE_ID=$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query "id" -o tsv 2>/dev/null)
+
+    # 譌｢蟄倥・繧ｵ繝悶せ繧ｯ繝ｪ繝励す繝ｧ繝ｳ縺後≠繧後・蜑企勁縺励※蜀堺ｽ懈・
+    az eventgrid event-subscription delete \
+        --name photo-upload-trigger \
+        --source-resource-id "$STORAGE_ID" \
+        --output none 2>/dev/null || true
+
+    az eventgrid event-subscription create \
+        --name photo-upload-trigger \
+        --source-resource-id "$STORAGE_ID" \
+        --endpoint "$ENDPOINT_URL" \
+        --endpoint-type webhook \
+        --included-event-types Microsoft.Storage.BlobCreated \
+        --subject-begins-with "/blobServices/default/containers/photos/blobs/users/" \
+        --output none 2>/dev/null
+
+    if [ $? -eq 0 ]; then
+        echo "  Event Grid subscription created."
+    else
+        echo "  WARNING: Failed to create Event Grid subscription."
+        echo "  You may need to create it manually in the Azure Portal."
+    fi
+fi
+echo ""
+
+# ============================================================
+# Step 8: Wait for function app to start & summary
+# ============================================================
+echo "[8/8] Waiting for function app to start..."
 sleep 10
 
 # Test the /info endpoint
@@ -354,7 +405,7 @@ echo " Function App:    $FUNCTION_APP_NAME"
 echo " Resource Group:  $RESOURCE_GROUP"
 echo ""
 echo " To connect the app:"
-echo "   1. Open app → Drawer → Settings"
+echo "   1. Open app 竊・Drawer 竊・Settings"
 echo "   2. Enter: $API_ENDPOINT"
 echo "   3. Save and run Connection Test"
 echo ""

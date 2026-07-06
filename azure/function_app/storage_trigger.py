@@ -21,10 +21,8 @@ STORAGE_CONNECTION = os.environ.get("STORAGE_CONNECTION", "")
 STORAGE_CONTAINER = os.environ.get("STORAGE_CONTAINER", "photos")
 THUMBNAIL_MAX_SIZE = int(os.environ.get("THUMBNAIL_MAX_SIZE", "400"))
 
-# ── Azure Functions Blueprint for Blob Trigger ──
+# ── Event Grid Blob Trigger Handler ──
 import azure.functions as func
-
-bp = func.Blueprint()
 
 
 def _get_cosmos_container(name: str):
@@ -39,38 +37,44 @@ def _get_blob_service():
     return BlobServiceClient.from_connection_string(STORAGE_CONNECTION)
 
 
-@bp.blob_trigger(
-    arg_name="blob",
-    path=f"{STORAGE_CONTAINER}/users/{{userId}}/{{*blobPath}}",
-    connection="AzureWebJobsStorage",
-)
-def process_photo(blob: func.InputStream):
+def handle_blob_event(event: func.EventGridEvent):
     """
-    Triggered when a new blob is uploaded to the photos container.
-    Generates a thumbnail and extracts EXIF metadata.
+    Process an Event Grid event for blob creation.
+    Extracts blob path from event, downloads data, generates thumbnail, updates Cosmos DB.
     """
-    blob_name = blob.name
-    logger.info(f"Processing blob: {blob_name}")
+    # Event Grid の subject からblob パスを取得
+    # subject 形式: /blobServices/default/containers/{container}/blobs/{blob_path}
+    subject = event.subject or ""
+    logger.info(f"Event Grid event: type={event.event_type}, subject={subject}")
 
+    # BlobCreated イベントのみ処理
+    if event.event_type != "Microsoft.Storage.BlobCreated":
+        logger.info(f"Skipping event type: {event.event_type}")
+        return
+
+    # subject から blob パスを抽出
+    # /blobServices/default/containers/photos/blobs/users/{uid}/{year}/{month}/{day}/{filename}
+    blob_prefix = f"/blobServices/default/containers/{STORAGE_CONTAINER}/blobs/"
+    if not subject.startswith(blob_prefix):
+        logger.info(f"Skipping: subject doesn't match container: {subject}")
+        return
+
+    blob_name = subject[len(blob_prefix):]
     if not blob_name:
         return
 
-    # Parse the blob path: photos/users/{userId}/{date_path}/{photoId}
-    # Remove the container prefix if present
+    logger.info(f"Processing blob: {blob_name}")
+
+    # Parse the blob path: users/{userId}/{date_path}/{photoId}
     path_parts = blob_name.split("/")
 
     # Find user ID and photo ID from path
-    # Expected: {container}/users/{userId}/{year}/{month}/{day}/{photoId}
-    # or: users/{userId}/{year}/{month}/{day}/{photoId}
+    # Expected: users/{userId}/{year}/{month}/{day}/{photoId}
     try:
-        if path_parts[0] == STORAGE_CONTAINER:
-            path_parts = path_parts[1:]
-
         if path_parts[0] != "users":
             logger.info(f"Skipping non-user blob: {blob_name}")
             return
 
-        user_id = path_parts[1]
         user_id = path_parts[1]
         filename_part = path_parts[-1]  # UUID or filename
 
@@ -90,8 +94,16 @@ def process_photo(blob: func.InputStream):
         logger.error(f"Failed to parse blob path: {blob_name}, error: {e}")
         return
 
-    # Read the image data
-    image_data = blob.read()
+    # Download the blob data
+    try:
+        blob_service = _get_blob_service()
+        container_client = blob_service.get_container_client(STORAGE_CONTAINER)
+        blob_client = container_client.get_blob_client(blob_name)
+        image_data = blob_client.download_blob().readall()
+    except Exception as e:
+        logger.error(f"Failed to download blob {blob_name}: {e}")
+        return
+
     if not image_data:
         logger.warning(f"Empty blob: {blob_name}")
         return

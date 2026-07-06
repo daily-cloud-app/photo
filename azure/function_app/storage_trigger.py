@@ -21,8 +21,10 @@ STORAGE_CONNECTION = os.environ.get("STORAGE_CONNECTION", "")
 STORAGE_CONTAINER = os.environ.get("STORAGE_CONTAINER", "photos")
 THUMBNAIL_MAX_SIZE = int(os.environ.get("THUMBNAIL_MAX_SIZE", "400"))
 
-# ── Azure Functions App (import from main module) ──
-from function_app import app
+# ── Azure Functions Blueprint for Blob Trigger ──
+import azure.functions as func
+
+bp = func.Blueprint()
 
 
 def _get_cosmos_container(name: str):
@@ -37,7 +39,7 @@ def _get_blob_service():
     return BlobServiceClient.from_connection_string(STORAGE_CONNECTION)
 
 
-@app.blob_trigger(
+@bp.blob_trigger(
     arg_name="blob",
     path=f"{STORAGE_CONTAINER}/users/{{userId}}/{{*blobPath}}",
     connection="STORAGE_CONNECTION",

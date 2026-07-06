@@ -1352,6 +1352,7 @@ def _build_upload_page_html(token: str, api_base: str) -> str:
 
 
 # ============================================================
-# Blob Storage Trigger (imported from storage_trigger.py)
+# Blob Storage Trigger (registered via Blueprint)
 # ============================================================
-import storage_trigger  # noqa: F401, E402
+from storage_trigger import bp as storage_trigger_bp  # noqa: E402
+app.register_blueprint(storage_trigger_bp)

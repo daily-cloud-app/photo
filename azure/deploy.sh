@@ -290,16 +290,22 @@ echo "[6/7] Deploying function app code..."
 # ARM デプロイ直後は Function App の準備が完了していない場合がある
 echo "  Waiting for Function App to be ready..."
 RETRY=0
-while [ $RETRY -lt 12 ]; do
+while [ $RETRY -lt 24 ]; do
     APP_STATE=$(az functionapp show --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "state" -o tsv 2>/dev/null || echo "")
     if [ "$APP_STATE" = "Running" ]; then
-        break
+        # SCM サイト（Kudu）が応答するまで追加で待つ
+        SCM_URL="https://${FUNCTION_APP_NAME}.scm.azurewebsites.net/"
+        SCM_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$SCM_URL" 2>/dev/null || echo "000")
+        if [ "$SCM_CODE" != "000" ] && [ "$SCM_CODE" != "502" ] && [ "$SCM_CODE" != "503" ]; then
+            echo "  Function App is ready (state=$APP_STATE, SCM=$SCM_CODE)."
+            break
+        fi
     fi
     sleep 5
     RETRY=$((RETRY+1))
 done
-if [ "$APP_STATE" != "Running" ]; then
-    echo "  WARNING: Function App state is '$APP_STATE', attempting deploy anyway..."
+if [ $RETRY -ge 24 ]; then
+    echo "  WARNING: Function App may not be fully ready, attempting deploy anyway..."
 fi
 
 if [ "$USE_FUNC_TOOLS" = true ]; then

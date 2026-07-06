@@ -4,8 +4,7 @@
 #
 # Prerequisites:
 #   - Azure CLI installed and logged in (az login)
-#   - Azure Functions Core Tools installed (func) — optional
-#   - Python 3.11+
+#   - zip command available (pre-installed in Cloud Shell)
 #
 # Usage:
 #   chmod +x deploy.sh
@@ -204,15 +203,6 @@ if ! command -v az &> /dev/null; then
     exit 1
 fi
 
-if ! command -v func &> /dev/null; then
-    echo "WARNING: Azure Functions Core Tools (func) not installed."
-    echo "Install: https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local"
-    echo "Continuing with az CLI deployment only..."
-    USE_FUNC_TOOLS=false
-else
-    USE_FUNC_TOOLS=true
-fi
-
 # Check if logged in
 if ! az account show &> /dev/null; then
     echo "Not logged in to Azure. Running 'az login'..."
@@ -308,30 +298,25 @@ if [ $RETRY -ge 24 ]; then
     echo "  WARNING: Function App may not be fully ready, attempting deploy anyway..."
 fi
 
-if [ "$USE_FUNC_TOOLS" = true ]; then
-    # Deploy using Azure Functions Core Tools
-    cd "$FUNCTION_APP_DIR"
-    func azure functionapp publish "$FUNCTION_APP_NAME" --python
-    cd ..
-else
-    # Deploy using zip deployment via az CLI
-    echo "  Creating deployment package..."
-    DEPLOY_ZIP="/tmp/daily-cloud-photo-azure.zip"
-    rm -f "$DEPLOY_ZIP"
+# az CLI の zip デプロイを使用（func ツールの squashfs デプロイは
+# WEBSITE_CONTENT* 設定を削除するため Blob Trigger が動作しなくなる）
+echo "  Creating deployment package..."
+DEPLOY_ZIP="/tmp/daily-cloud-photo-azure.zip"
+rm -f "$DEPLOY_ZIP"
 
-    cd "$FUNCTION_APP_DIR"
-    zip -r "$DEPLOY_ZIP" . -x "__pycache__/*" "*.pyc" ".venv/*" ".git/*"
-    cd ..
+cd "$FUNCTION_APP_DIR"
+zip -r "$DEPLOY_ZIP" . -x "__pycache__/*" "*.pyc" ".venv/*" ".git/*"
+cd ..
 
-    echo "  Uploading to Azure..."
-    az functionapp deployment source config-zip \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$FUNCTION_APP_NAME" \
-        --src "$DEPLOY_ZIP" \
-        --output none
+echo "  Uploading to Azure (remote build)..."
+az functionapp deployment source config-zip \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$FUNCTION_APP_NAME" \
+    --src "$DEPLOY_ZIP" \
+    --build-remote true \
+    --output none
 
-    rm -f "$DEPLOY_ZIP"
-fi
+rm -f "$DEPLOY_ZIP"
 
 echo "  Code deployed successfully."
 echo ""

@@ -287,6 +287,21 @@ echo ""
 # ============================================================
 echo "[6/7] Deploying function app code..."
 
+# ARM デプロイ直後は Function App の準備が完了していない場合がある
+echo "  Waiting for Function App to be ready..."
+RETRY=0
+while [ $RETRY -lt 12 ]; do
+    APP_STATE=$(az functionapp show --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "state" -o tsv 2>/dev/null || echo "")
+    if [ "$APP_STATE" = "Running" ]; then
+        break
+    fi
+    sleep 5
+    RETRY=$((RETRY+1))
+done
+if [ "$APP_STATE" != "Running" ]; then
+    echo "  WARNING: Function App state is '$APP_STATE', attempting deploy anyway..."
+fi
+
 if [ "$USE_FUNC_TOOLS" = true ]; then
     # Deploy using Azure Functions Core Tools
     cd "$FUNCTION_APP_DIR"

@@ -668,6 +668,7 @@ def photos_upload_url(req: func.HttpRequest) -> func.HttpResponse:
     return _ok(200, {
         "photoId": photo_id,
         "uploadUrl": upload_url,
+        "headers": {"x-ms-blob-type": "BlockBlob", "Content-Type": content_type},
         "expiresIn": 3600,
     })
 

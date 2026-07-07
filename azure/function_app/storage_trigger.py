@@ -168,7 +168,7 @@ def handle_blob_event(event: func.EventGridEvent):
     # Upload thumbnail to blob storage
     thumbnail_key = None
     if thumbnail_data:
-        thumbnail_key = f"users/{user_id}/thumbnails/{filename_part}"
+        thumbnail_key = f"thumbnails/{'/'.join(path_parts[1:])}"
         try:
             blob_service = _get_blob_service()
             container_client = blob_service.get_container_client(STORAGE_CONTAINER)

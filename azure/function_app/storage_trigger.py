@@ -176,7 +176,7 @@ def handle_blob_event(event: func.EventGridEvent):
             thumb_blob.upload_blob(
                 thumbnail_data,
                 overwrite=True,
-                content_settings={"content_type": "image/jpeg"},
+                content_type="image/jpeg",
             )
             logger.info(f"Thumbnail uploaded: {thumbnail_key}")
         except Exception as e:
@@ -211,8 +211,11 @@ def handle_blob_event(event: func.EventGridEvent):
             container.upsert_item(body=item)
             logger.info(f"Cosmos DB updated for photo {filename_part}")
         else:
-            # Direct upload: use full path as photoId
-            photo_id = '/'.join(path_parts[2:])
+            # Direct upload: use path-based ID (sanitize for Cosmos DB)
+            raw_id = '/'.join(path_parts[2:])
+            # Cosmos DB の id にスラッシュ等の不正文字が使えないためハッシュ化
+            import hashlib
+            photo_id = hashlib.sha256(raw_id.encode()).hexdigest()[:32]
             blob_key = "/".join(path_parts)
             photo_doc = {
                 "id": photo_id,

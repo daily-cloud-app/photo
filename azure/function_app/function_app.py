@@ -1355,9 +1355,8 @@ def _build_upload_page_html(token: str, api_base: str) -> str:
 # Blob Storage Event (via Event Grid Subscription)
 # ============================================================
 
-@app.function_name(name="process_photo")
 @app.event_grid_trigger(arg_name="event")
-def process_photo_event(event: func.EventGridEvent):
+def process_photo(event: func.EventGridEvent):
     """Triggered by Event Grid when a blob is created in the photos container."""
     from storage_trigger import handle_blob_event
     handle_blob_event(event)

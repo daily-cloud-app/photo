@@ -332,7 +332,7 @@ az provider register --namespace Microsoft.EventGrid 2>/dev/null || true
 BLOB_KEY=""
 KEY_RETRY=0
 while [ -z "$BLOB_KEY" ] && [ $KEY_RETRY -lt 12 ]; do
-    BLOB_KEY=$(az functionapp keys list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "systemKeys.blobs_extension" -o tsv 2>/dev/null || echo "")
+    BLOB_KEY=$(az functionapp keys list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "systemKeys.eventgrid_extension" -o tsv 2>/dev/null || echo "")
     if [ -z "$BLOB_KEY" ] || [ "$BLOB_KEY" = "null" ]; then
         BLOB_KEY=""
         sleep 10
@@ -341,7 +341,7 @@ while [ -z "$BLOB_KEY" ] && [ $KEY_RETRY -lt 12 ]; do
 done
 
 if [ -z "$BLOB_KEY" ]; then
-    echo "  WARNING: Could not retrieve blobs_extension key."
+    echo "  WARNING: Could not retrieve eventgrid_extension key."
     echo "  Event Grid subscription must be created manually."
     echo "  See: https://learn.microsoft.com/en-us/azure/azure-functions/functions-event-grid-blob-trigger"
 else

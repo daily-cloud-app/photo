@@ -233,11 +233,14 @@ Get a presigned URL for uploading a photo.
 {
   "photoId": "string",
   "uploadUrl": "string (presigned PUT URL)",
+  "headers": {"x-ms-blob-type": "BlockBlob", "Content-Type": "image/jpeg"},
   "expiresIn": 3600
 }
 ```
 
-The client uploads the file directly to the presigned URL using HTTP PUT with the specified Content-Type header.
+- `headers` (optional): Additional HTTP headers that the client MUST include in the PUT request to the `uploadUrl`. If not present, only `Content-Type` is required. Azure Blob Storage requires `x-ms-blob-type: BlockBlob`; AWS S3 and GCP do not return this field.
+
+The client uploads the file directly to the presigned URL using HTTP PUT with the specified Content-Type header and any additional headers from the `headers` field.
 
 ### POST /photos/{id}/confirm
 
@@ -338,6 +341,48 @@ Get a presigned URL using a share token (no auth required).
   "photoId": "string"
 }
 ```
+
+---
+
+## Share Download URL (Planned)
+
+Requires `share-url` feature enabled. Allows sharing photos with non-app-users via a browser-accessible download page.
+
+### POST /photos/share-download-url
+
+Generate a temporary download page URL. Photos are filtered by label and optionally by date range.
+
+**Request Body:**
+```json
+{
+  "labelId": "custom:123 (required)",
+  "labelName": "Family (optional, for display)",
+  "expiresHours": 72,
+  "dateFrom": "2025-01-01T00:00:00Z (optional)",
+  "dateTo": "2025-12-31T23:59:59Z (optional)"
+}
+```
+
+**Response 200:**
+```json
+{
+  "downloadUrl": "https://api.example.com/v1/download-page?token=uuid",
+  "token": "string",
+  "expiresHours": 72,
+  "photoCount": 5
+}
+```
+
+### GET /download-page?token={token}
+
+Returns an HTML page that displays thumbnails and allows downloading photos. No authentication required. Token validated server-side.
+
+The page should:
+- Display thumbnails of all photos matching the label (and date range if specified)
+- Allow individual photo download
+- Allow bulk download (zip)
+- Show expiration info
+- Be mobile-friendly
 
 ---
 

@@ -533,7 +533,7 @@ def photos_list(req: func.HttpRequest) -> func.HttpResponse:
                 continue
 
             # Get photos from sharing user with the specified label
-            shared_photos_query = "SELECT * FROM c WHERE c.userId = @fromUid AND c.status = 'uploaded' AND ARRAY_CONTAINS(c.labels, @labelId)"
+            shared_photos_query = "SELECT * FROM c WHERE c.userId = @fromUid AND c.status != 'deleted' AND ARRAY_CONTAINS(c.labels, @labelId)"
             shared_params = [
                 {"name": "@fromUid", "value": from_uid},
                 {"name": "@labelId", "value": label_id},
@@ -545,7 +545,7 @@ def photos_list(req: func.HttpRequest) -> func.HttpResponse:
             ))
 
             for sp in shared_photos:
-                if sp.get("id", "").startswith("share_token:") or sp.get("id", "").startswith("share:"):
+                if sp.get("id", "").startswith("share_token:") or sp.get("id", "").startswith("share:") or sp.get("id", "").startswith("sent_share:"):
                     continue
                 sp_blob_key = sp.get("blobKey", "")
                 sp_thumb_key = sp.get("thumbnailKey", "")

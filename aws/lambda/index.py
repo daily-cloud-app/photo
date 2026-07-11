@@ -1439,7 +1439,10 @@ def _download_page(event):
             'createdAt': photo.get('createdAt', ''),
         })
 
-    # Render HTML
+    # Render HTML — matching upload page style with JSZip bulk download
+    import json as json_mod
+    photos_json = json_mod.dumps([{'filename': e['filename'], 'fullUrl': e['fullUrl']} for e in photo_entries])
+
     photo_grid = ''
     for entry in photo_entries:
         photo_grid += f'''
@@ -1451,36 +1454,83 @@ def _download_page(event):
         </div>'''
 
     html = f'''<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shared Photos — {label_name}</title>
+    <title>Download Photos</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; padding: 20px; }}
-        .header {{ text-align: center; margin-bottom: 24px; }}
-        .header h1 {{ font-size: 1.5rem; color: #333; }}
-        .header p {{ color: #666; margin-top: 8px; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; max-width: 1200px; margin: 0 auto; }}
-        .photo-card {{ background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
-        .photo-card img {{ width: 100%; aspect-ratio: 1; object-fit: cover; cursor: pointer; }}
-        .photo-card img:hover {{ opacity: 0.8; }}
-        .photo-name {{ padding: 8px; font-size: 0.75rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-        .footer {{ text-align: center; margin-top: 24px; color: #999; font-size: 0.8rem; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }}
+        .card {{ background: white; border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; margin: 0 auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+        h1 {{ font-size: 1.5em; color: #333; margin-bottom: 8px; }}
+        .subtitle {{ color: #888; font-size: 0.9em; margin-bottom: 24px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }}
+        .photo-card {{ border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .photo-card img {{ width: 100%; aspect-ratio: 1; object-fit: cover; cursor: pointer; transition: opacity 0.2s; }}
+        .photo-card img:hover {{ opacity: 0.7; }}
+        .photo-name {{ padding: 6px 8px; font-size: 0.7rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #f9f9f9; }}
+        button {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 14px 32px; border-radius: 12px; font-size: 1em; font-weight: 600; cursor: pointer; width: 100%; transition: all 0.3s ease; }}
+        button:hover:not(:disabled) {{ transform: translateY(-2px); box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4); }}
+        button:disabled {{ background: #ddd; transform: none; box-shadow: none; cursor: not-allowed; }}
+        .status {{ margin-top: 12px; padding: 12px 16px; border-radius: 12px; font-size: 0.9em; text-align: center; }}
+        .progress {{ background: #ede9ff; color: #5c4db1; }}
+        .success {{ background: #e8f5e9; color: #2e7d32; }}
+        .footer {{ text-align: center; margin-top: 16px; color: #999; font-size: 0.8em; }}
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
-    <div class="header">
-        <h1>{label_name}</h1>
-        <p>{len(photo_entries)} photos shared via Daily Cloud Photo</p>
+    <div class="card">
+        <h1>Download Photos</h1>
+        <p class="subtitle">{label_name} — {len(photo_entries)} photos</p>
+
+        <div class="grid">
+            {photo_grid}
+        </div>
+
+        <button id="downloadAllBtn" onclick="downloadAll()">📥 Download All ({len(photo_entries)} photos)</button>
+        <div id="status"></div>
+        <div class="footer">
+            <p>Click a photo to download individually. This link expires in {expires_hours} hours.</p>
+        </div>
     </div>
-    <div class="grid">
-        {photo_grid}
-    </div>
-    <div class="footer">
-        <p>Click a photo to download. This link expires in {expires_hours} hours.</p>
-    </div>
+    <script>
+        const photos = {photos_json};
+        async function downloadAll() {{
+            const btn = document.getElementById('downloadAllBtn');
+            const statusEl = document.getElementById('status');
+            btn.disabled = true;
+            statusEl.className = 'status progress';
+            statusEl.textContent = 'Preparing download...';
+
+            try {{
+                const zip = new JSZip();
+                for (let i = 0; i < photos.length; i++) {{
+                    statusEl.textContent = `Downloading ${{i + 1}} / ${{photos.length}}...`;
+                    const resp = await fetch(photos[i].fullUrl);
+                    const blob = await resp.blob();
+                    zip.file(photos[i].filename, blob);
+                }}
+                statusEl.textContent = 'Creating ZIP...';
+                const content = await zip.generateAsync({{type: 'blob'}});
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '{label_name}.zip';
+                a.click();
+                URL.revokeObjectURL(url);
+                statusEl.className = 'status success';
+                statusEl.textContent = 'Download complete!';
+            }} catch (e) {{
+                statusEl.className = 'status';
+                statusEl.style.background = '#ffebee';
+                statusEl.style.color = '#c62828';
+                statusEl.textContent = 'Error: ' + e.message;
+            }}
+            btn.disabled = false;
+        }}
+    </script>
 </body>
 </html>'''
 

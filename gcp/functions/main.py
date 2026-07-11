@@ -23,6 +23,7 @@ GCP_PROJECT = os.environ.get('GCP_PROJECT', '')
 REQUIRE_EMAIL = os.environ.get('REQUIRE_EMAIL', 'true') == 'true'
 REQUIRE_PHONE = os.environ.get('REQUIRE_PHONE', 'false') == 'true'
 ENABLE_SHARE_URL = os.environ.get('ENABLE_SHARE_URL', 'true') == 'true'
+ENABLE_SHARE_DOWNLOAD_URL = os.environ.get('ENABLE_SHARE_DOWNLOAD_URL', 'true') == 'true'
 ENABLE_LABEL_SHARING = os.environ.get('ENABLE_LABEL_SHARING', 'true') == 'true'
 APP_DISPLAY_NAME = os.environ.get('APP_DISPLAY_NAME', 'Daily Cloud Photo Backend')
 SIGNED_URL_EXPIRY = 3600  # 1 hour
@@ -273,9 +274,11 @@ def _info(request):
     if REQUIRE_PHONE:
         fields.append('phone')
 
-    features = ['upload', 'labels']
+    features = []
     if ENABLE_SHARE_URL:
-        features.append('share-url')
+        features.append('share-upload-url')
+    if ENABLE_SHARE_DOWNLOAD_URL:
+        features.append('share-download-url')
     if ENABLE_LABEL_SHARING:
         features.append('label-sharing')
 
@@ -1415,7 +1418,7 @@ def _delete_share(request, path):
 
 def _share_download_url(request):
     """Generate a download page URL for sharing photos by label."""
-    if not ENABLE_SHARE_URL:
+    if not ENABLE_SHARE_DOWNLOAD_URL:
         return _err(403, 'Share URL feature is disabled')
     uid = _get_user_id(request)
     if not uid:
@@ -1473,7 +1476,7 @@ def _share_download_url(request):
 
 def _download_page(request):
     """Render an HTML download page for shared photos."""
-    if not ENABLE_SHARE_URL:
+    if not ENABLE_SHARE_DOWNLOAD_URL:
         return _html_response(403, '<h1>This feature is disabled.</h1>')
 
     token = request.args.get('token', '')

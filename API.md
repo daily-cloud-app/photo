@@ -28,13 +28,13 @@ Returns server configuration. No authentication required.
   "name": "Daily Cloud Photo Backend",
   "version": "1.0.0",
   "signupFields": ["username", "password", "email"],
-  "features": ["upload", "labels", "share-url", "label-sharing"]
+  "features": ["share-upload-url", "share-download-url", "label-sharing"]
 }
 ```
 
 - `name`: Display name shown in the app
 - `signupFields`: Fields required for signup (dynamic based on server config)
-- `features`: Enabled features. Possible values: `upload`, `labels`, `share-url`, `label-sharing`
+- `features`: Enabled features. Possible values: `share-upload-url`, `share-download-url`, `label-sharing`
 
 ---
 

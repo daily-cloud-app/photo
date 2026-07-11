@@ -31,6 +31,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "30"
 REQUIRE_EMAIL = os.environ.get("REQUIRE_EMAIL", "true").lower() == "true"
 REQUIRE_PHONE = os.environ.get("REQUIRE_PHONE", "false").lower() == "true"
 ENABLE_SHARE_URL = os.environ.get("ENABLE_SHARE_URL", "true").lower() == "true"
+ENABLE_SHARE_DOWNLOAD_URL = os.environ.get("ENABLE_SHARE_DOWNLOAD_URL", "true").lower() == "true"
 ENABLE_LABEL_SHARING = os.environ.get("ENABLE_LABEL_SHARING", "true").lower() == "true"
 APP_DISPLAY_NAME = os.environ.get("APP_DISPLAY_NAME", "Daily Cloud Photo Backend")
 FUNCTION_APP_URL = os.environ.get("FUNCTION_APP_URL", "")
@@ -231,9 +232,11 @@ def get_info(req: func.HttpRequest) -> func.HttpResponse:
     if REQUIRE_PHONE:
         fields.append("phone")
 
-    features = ["upload", "labels"]
+    features = []
     if ENABLE_SHARE_URL:
-        features.append("share-url")
+        features.append("share-upload-url")
+    if ENABLE_SHARE_DOWNLOAD_URL:
+        features.append("share-download-url")
     if ENABLE_LABEL_SHARING:
         features.append("label-sharing")
 
@@ -1358,7 +1361,7 @@ def _build_upload_page_html(token: str, api_base: str) -> str:
 @app.route(route="photos/share-download-url", methods=["POST"])
 def share_download_url(req: func.HttpRequest) -> func.HttpResponse:
     """Generate a download page URL for sharing photos by label."""
-    if not ENABLE_SHARE_URL:
+    if not ENABLE_SHARE_DOWNLOAD_URL:
         return _err(403, "Share URL feature is disabled")
     user = _get_user_from_request(req)
     if not user:
@@ -1412,7 +1415,7 @@ def share_download_url(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="download-page", methods=["GET"])
 def download_page(req: func.HttpRequest) -> func.HttpResponse:
     """Render an HTML download page for shared photos."""
-    if not ENABLE_SHARE_URL:
+    if not ENABLE_SHARE_DOWNLOAD_URL:
         return func.HttpResponse("<h1>This feature is disabled.</h1>", status_code=403, mimetype="text/html")
 
     token = req.params.get("token", "")

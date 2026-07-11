@@ -18,6 +18,7 @@ PHOTOS_TABLE = os.environ.get('PHOTOS_TABLE', '')
 REQUIRE_EMAIL = os.environ.get('REQUIRE_EMAIL', 'true') == 'true'
 REQUIRE_PHONE = os.environ.get('REQUIRE_PHONE', 'false') == 'true'
 ENABLE_SHARE_URL = os.environ.get('ENABLE_SHARE_URL', 'true') == 'true'
+ENABLE_SHARE_DOWNLOAD_URL = os.environ.get('ENABLE_SHARE_DOWNLOAD_URL', 'true') == 'true'
 ENABLE_LABEL_SHARING = os.environ.get('ENABLE_LABEL_SHARING', 'true') == 'true'
 APP_DISPLAY_NAME = os.environ.get('APP_DISPLAY_NAME', 'Daily Cloud Photo Backend')
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-northeast-1')
@@ -164,9 +165,11 @@ def _info(event):
     if REQUIRE_PHONE:
         fields.append('phone')
 
-    features = ['upload', 'labels']
+    features = []
     if ENABLE_SHARE_URL:
-        features.append('share-url')
+        features.append('share-upload-url')
+    if ENABLE_SHARE_DOWNLOAD_URL:
+        features.append('share-download-url')
     if ENABLE_LABEL_SHARING:
         features.append('label-sharing')
 

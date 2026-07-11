@@ -131,6 +131,10 @@ def handler(event, context):
         return _upload_page(event)
     if method == 'POST' and path == '/photos/share-upload':
         return _share_upload(event)
+    if method == 'POST' and path == '/photos/share-download-url':
+        return _share_download_url(event)
+    if method == 'GET' and path == '/download-page':
+        return _download_page(event)
     if method == 'POST' and path == '/shares':
         return _create_share(event)
     if method == 'GET' and path == '/shares/pending':
@@ -1275,3 +1279,209 @@ def _get_username(uid):
     except Exception:
         pass
     return uid
+
+
+# ============================================================
+# POST /photos/share-download-url
+# ============================================================
+
+def _share_download_url(event):
+    """Generate a download page URL for sharing photos by label."""
+    if not ENABLE_SHARE_URL:
+        return _err(403, 'Share URL feature is disabled')
+    uid = _user_id(event)
+    if not uid:
+        return _err(401, 'Authentication required')
+
+    b = _body(event)
+    label_id = b.get('labelId', '')
+    label_name = b.get('labelName', '')
+    expires_hours = int(b.get('expiresHours', 72))
+    date_from = b.get('dateFrom')
+    date_to = b.get('dateTo')
+
+    if not label_id:
+        return _err(400, 'labelId is required')
+
+    # Count matching photos
+    from boto3.dynamodb.conditions import Key, Attr
+    t = _table()
+    resp = t.query(KeyConditionExpression=Key('userId').eq(uid))
+    items = resp.get('Items', [])
+    matching = [
+        item for item in items
+        if item.get('status') != 'deleted'
+        and not item.get('photoId', '').startswith('share_token:')
+        and not item.get('photoId', '').startswith('share:')
+        and not item.get('photoId', '').startswith('sent_share:')
+        and not item.get('photoId', '').startswith('download_token:')
+        and label_id in item.get('labels', [])
+    ]
+
+    # Optional date filter
+    if date_from:
+        matching = [m for m in matching if m.get('createdAt', '') >= date_from]
+    if date_to:
+        matching = [m for m in matching if m.get('createdAt', '') <= date_to]
+
+    if not matching:
+        return _err(404, 'No photos found matching the criteria')
+
+    # Generate token
+    token = str(uuid.uuid4())
+
+    # Save token to DynamoDB
+    t.put_item(Item={
+        'userId': uid,
+        'photoId': f'download_token:{token}',
+        'status': 'active',
+        'createdAt': datetime.now(timezone.utc).isoformat(),
+        'expiresHours': expires_hours,
+        'labelId': label_id,
+        'labelName': label_name,
+        'dateFrom': date_from or '',
+        'dateTo': date_to or '',
+        'photoCount': len(matching),
+    })
+
+    # Generate download page URL
+    rc = event.get('requestContext', {})
+    domain = rc.get('domainName', '')
+    stage = rc.get('stage', 'v1')
+    page_url = f"https://{domain}/{stage}/download-page?token={token}"
+
+    return _ok(200, {
+        'downloadUrl': page_url,
+        'token': token,
+        'expiresHours': expires_hours,
+        'photoCount': len(matching),
+    })
+
+
+# ============================================================
+# GET /download-page?token=xxx
+# ============================================================
+
+def _download_page(event):
+    """Render an HTML download page for shared photos."""
+    if not ENABLE_SHARE_URL:
+        return _html_response(403, '<h1>This feature is disabled.</h1>')
+
+    qs = event.get('queryStringParameters') or {}
+    token = qs.get('token', '')
+
+    if not token:
+        return _html_response(400, '<h1>Invalid link.</h1>')
+
+    # Find token record
+    from boto3.dynamodb.conditions import Key, Attr
+    t = _table()
+    resp = t.scan(
+        FilterExpression=Attr('photoId').eq(f'download_token:{token}') & Attr('status').eq('active'),
+        Limit=100,
+    )
+    items = resp.get('Items', [])
+    if not items:
+        return _html_response(404, '<h1>This link has expired or is invalid.</h1>')
+
+    token_record = items[0]
+    uid = token_record['userId']
+    label_id = token_record.get('labelId', '')
+    label_name = token_record.get('labelName', label_id)
+    expires_hours = int(token_record.get('expiresHours', 72))
+    date_from = token_record.get('dateFrom', '')
+    date_to = token_record.get('dateTo', '')
+
+    # Check expiration
+    created_at = token_record.get('createdAt', '')
+    if created_at:
+        from datetime import timedelta
+        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > created_dt + timedelta(hours=expires_hours):
+            return _html_response(410, '<h1>This link has expired.</h1>')
+
+    # Get photos with the specified label
+    resp = t.query(KeyConditionExpression=Key('userId').eq(uid))
+    all_items = resp.get('Items', [])
+    photos = [
+        item for item in all_items
+        if item.get('status') != 'deleted'
+        and not item.get('photoId', '').startswith('share_token:')
+        and not item.get('photoId', '').startswith('share:')
+        and not item.get('photoId', '').startswith('sent_share:')
+        and not item.get('photoId', '').startswith('download_token:')
+        and label_id in item.get('labels', [])
+    ]
+
+    # Apply date filter
+    if date_from:
+        photos = [p for p in photos if p.get('createdAt', '') >= date_from]
+    if date_to:
+        photos = [p for p in photos if p.get('createdAt', '') <= date_to]
+
+    # Sort by date descending
+    photos.sort(key=lambda p: p.get('createdAt', ''), reverse=True)
+
+    # Generate signed URLs for each photo
+    photo_entries = []
+    for photo in photos:
+        s3_key = photo.get('s3Key', f"users/{uid}/{photo['photoId']}")
+        thumb_key = photo.get('thumbnailKey', s3_key)
+        try:
+            thumb_url = s3.generate_presigned_url('get_object', Params={'Bucket': PHOTOS_BUCKET, 'Key': thumb_key}, ExpiresIn=3600)
+            full_url = s3.generate_presigned_url('get_object', Params={'Bucket': PHOTOS_BUCKET, 'Key': s3_key}, ExpiresIn=3600)
+        except Exception:
+            continue
+        photo_entries.append({
+            'filename': photo.get('filename', photo['photoId']),
+            'thumbUrl': thumb_url,
+            'fullUrl': full_url,
+            'createdAt': photo.get('createdAt', ''),
+        })
+
+    # Render HTML
+    photo_grid = ''
+    for entry in photo_entries:
+        photo_grid += f'''
+        <div class="photo-card">
+            <a href="{entry['fullUrl']}" target="_blank" download="{entry['filename']}">
+                <img src="{entry['thumbUrl']}" alt="{entry['filename']}" loading="lazy" />
+            </a>
+            <div class="photo-name">{entry['filename']}</div>
+        </div>'''
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Photos — {label_name}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; padding: 20px; }}
+        .header {{ text-align: center; margin-bottom: 24px; }}
+        .header h1 {{ font-size: 1.5rem; color: #333; }}
+        .header p {{ color: #666; margin-top: 8px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; max-width: 1200px; margin: 0 auto; }}
+        .photo-card {{ background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .photo-card img {{ width: 100%; aspect-ratio: 1; object-fit: cover; cursor: pointer; }}
+        .photo-card img:hover {{ opacity: 0.8; }}
+        .photo-name {{ padding: 8px; font-size: 0.75rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .footer {{ text-align: center; margin-top: 24px; color: #999; font-size: 0.8rem; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{label_name}</h1>
+        <p>{len(photo_entries)} photos shared via Daily Cloud Photo</p>
+    </div>
+    <div class="grid">
+        {photo_grid}
+    </div>
+    <div class="footer">
+        <p>Click a photo to download. This link expires in {expires_hours} hours.</p>
+    </div>
+</body>
+</html>'''
+
+    return _html_response(200, html)

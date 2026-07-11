@@ -228,6 +228,10 @@ def main_handler(request):
         return _upload_page(request)
     if method == 'POST' and path == '/photos/share-upload':
         return _share_upload(request)
+    if method == 'POST' and path == '/photos/share-download-url':
+        return _share_download_url(request)
+    if method == 'GET' and path == '/download-page':
+        return _download_page(request)
 
     # Photo routes with ID parameter
     if method == 'POST' and path.startswith('/photos/') and path.endswith('/confirm'):
@@ -1403,6 +1407,216 @@ def _delete_share(request, path):
         return _ok(200, {'message': 'Share removed.'})
 
     return _err(404, 'Share not found')
+
+
+# ============================================================
+# POST /photos/share-download-url
+# ============================================================
+
+def _share_download_url(request):
+    """Generate a download page URL for sharing photos by label."""
+    if not ENABLE_SHARE_URL:
+        return _err(403, 'Share URL feature is disabled')
+    uid = _get_user_id(request)
+    if not uid:
+        return _err(401, 'Authentication required')
+
+    data = request.get_json(silent=True) or {}
+    label_id = data.get('labelId', '')
+    label_name = data.get('labelName', '')
+    expires_hours = int(data.get('expiresHours', 72))
+
+    if not label_id:
+        return _err(400, 'labelId is required')
+
+    # Count matching photos
+    docs = _query_user_photos(uid)
+    matching = [
+        d for d in docs
+        if d.get('status') != 'deleted'
+        and not d.get('photoId', '').startswith('share_token:')
+        and not d.get('photoId', '').startswith('share:')
+        and not d.get('photoId', '').startswith('sent_share:')
+        and not d.get('photoId', '').startswith('download_token:')
+        and label_id in d.get('labels', [])
+    ]
+
+    if not matching:
+        return _err(404, 'No photos found matching the criteria')
+
+    token = str(uuid.uuid4())
+
+    # Save token to Firestore
+    db_client.collection('users').document(uid).collection('photos').document(f'download_token:{token}').set({
+        'status': 'active',
+        'createdAt': datetime.now(timezone.utc).isoformat(),
+        'expiresHours': expires_hours,
+        'labelId': label_id,
+        'labelName': label_name,
+        'photoCount': len(matching),
+    })
+
+    api_base = os.environ.get('FUNCTION_URL', request.url_root.rstrip('/'))
+    page_url = f"{api_base}/download-page?token={token}"
+
+    return _ok(200, {
+        'downloadUrl': page_url,
+        'token': token,
+        'expiresHours': expires_hours,
+        'photoCount': len(matching),
+    })
+
+
+# ============================================================
+# GET /download-page?token=xxx
+# ============================================================
+
+def _download_page(request):
+    """Render an HTML download page for shared photos."""
+    if not ENABLE_SHARE_URL:
+        return _html_response(403, '<h1>This feature is disabled.</h1>')
+
+    token = request.args.get('token', '')
+    if not token:
+        return _html_response(400, '<h1>Invalid link.</h1>')
+
+    # Find token record by scanning all users (token is unique)
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    users_ref = db_client.collection('users')
+    token_doc = None
+    uid = None
+
+    for user_doc in users_ref.stream():
+        doc_ref = users_ref.document(user_doc.id).collection('photos').document(f'download_token:{token}')
+        doc = doc_ref.get()
+        if doc.exists and doc.to_dict().get('status') == 'active':
+            token_doc = doc.to_dict()
+            uid = user_doc.id
+            break
+
+    if not token_doc or not uid:
+        return _html_response(404, '<h1>This link has expired or is invalid.</h1>')
+
+    label_id = token_doc.get('labelId', '')
+    label_name = token_doc.get('labelName', label_id)
+    expires_hours = int(token_doc.get('expiresHours', 72))
+
+    # Check expiration
+    created_at = token_doc.get('createdAt', '')
+    if created_at:
+        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > created_dt + timedelta(hours=expires_hours):
+            return _html_response(410, '<h1>This link has expired.</h1>')
+
+    # Get photos with label
+    docs = _query_user_photos(uid)
+    photos = [
+        d for d in docs
+        if d.get('status') != 'deleted'
+        and not d.get('photoId', '').startswith('share_token:')
+        and not d.get('photoId', '').startswith('share:')
+        and not d.get('photoId', '').startswith('download_token:')
+        and label_id in d.get('labels', [])
+    ]
+    photos.sort(key=lambda p: p.get('createdAt', ''), reverse=True)
+
+    # Generate signed URLs
+    photo_entries = []
+    for photo in photos:
+        gcs_key = photo.get('gcsKey', f"users/{uid}/{photo.get('photoId', '')}")
+        thumb_key = photo.get('thumbnailKey', gcs_key)
+        try:
+            thumb_url = _generate_signed_url(thumb_key)
+            full_url = _generate_signed_url(gcs_key)
+        except Exception:
+            continue
+        photo_entries.append({
+            'filename': photo.get('filename', photo.get('photoId', '')),
+            'thumbUrl': thumb_url,
+            'fullUrl': full_url,
+        })
+
+    import json as json_mod
+    photos_json = json_mod.dumps([{'filename': e['filename'], 'fullUrl': e['fullUrl']} for e in photo_entries])
+
+    photo_grid = ''
+    for entry in photo_entries:
+        photo_grid += f'''
+        <div class="photo-card">
+            <a href="{entry['fullUrl']}" target="_blank" download="{entry['filename']}">
+                <img src="{entry['thumbUrl']}" alt="{entry['filename']}" loading="lazy" />
+            </a>
+            <div class="photo-name">{entry['filename']}</div>
+        </div>'''
+
+    html = f'''<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Photos</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }}
+        .card {{ background: white; border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; margin: 0 auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+        h1 {{ font-size: 1.5em; color: #333; margin-bottom: 8px; }}
+        .subtitle {{ color: #888; font-size: 0.9em; margin-bottom: 24px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }}
+        .photo-card {{ border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .photo-card img {{ width: 100%; aspect-ratio: 1; object-fit: cover; cursor: pointer; transition: opacity 0.2s; }}
+        .photo-card img:hover {{ opacity: 0.7; }}
+        .photo-name {{ padding: 6px 8px; font-size: 0.7rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #f9f9f9; }}
+        button {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 14px 32px; border-radius: 12px; font-size: 1em; font-weight: 600; cursor: pointer; width: 100%; transition: all 0.3s ease; }}
+        button:hover:not(:disabled) {{ transform: translateY(-2px); box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4); }}
+        button:disabled {{ background: #ddd; transform: none; box-shadow: none; cursor: not-allowed; }}
+        .status {{ margin-top: 12px; padding: 12px 16px; border-radius: 12px; font-size: 0.9em; text-align: center; }}
+        .footer {{ text-align: center; margin-top: 16px; color: #999; font-size: 0.8em; }}
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <div class="card">
+        <h1>Download Photos</h1>
+        <p class="subtitle">{label_name} — {len(photo_entries)} photos</p>
+        <div class="grid">{photo_grid}</div>
+        <button id="downloadAllBtn" onclick="downloadAll()">📥 Download All ({len(photo_entries)} photos)</button>
+        <div id="status"></div>
+        <div class="footer"><p>Click a photo to download individually. This link expires in {expires_hours} hours.</p></div>
+    </div>
+    <script>
+        const photos = {photos_json};
+        async function downloadAll() {{
+            const btn = document.getElementById('downloadAllBtn');
+            const st = document.getElementById('status');
+            btn.disabled = true;
+            st.className = 'status'; st.style.background = '#ede9ff'; st.style.color = '#5c4db1';
+            st.textContent = 'Preparing download...';
+            try {{
+                const zip = new JSZip();
+                for (let i = 0; i < photos.length; i++) {{
+                    st.textContent = `Downloading ${{i+1}} / ${{photos.length}}...`;
+                    const r = await fetch(photos[i].fullUrl);
+                    zip.file(photos[i].filename, await r.blob());
+                }}
+                st.textContent = 'Creating ZIP...';
+                const blob = await zip.generateAsync({{type:'blob'}});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = '{label_name}.zip';
+                a.click();
+                st.style.background = '#e8f5e9'; st.style.color = '#2e7d32';
+                st.textContent = 'Download complete!';
+            }} catch(e) {{
+                st.style.background = '#ffebee'; st.style.color = '#c62828';
+                st.textContent = 'Error: ' + e.message;
+            }}
+            btn.disabled = false;
+        }}
+    </script>
+</body>
+</html>'''
+
+    return _html_response(200, html)
 
 
 # ============================================================

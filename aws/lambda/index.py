@@ -1379,11 +1379,11 @@ def _download_page(event):
     # Find token record
     from boto3.dynamodb.conditions import Key, Attr
     t = _table()
-    resp = t.scan(
-        FilterExpression=Attr('photoId').eq(f'download_token:{token}') & Attr('status').eq('active'),
-        Limit=100,
+    resp = t.query(
+        IndexName='photoId-index',
+        KeyConditionExpression=Key('photoId').eq(f'download_token:{token}'),
     )
-    items = resp.get('Items', [])
+    items = [i for i in resp.get('Items', []) if i.get('status') == 'active']
     if not items:
         return _html_response(404, '<h1>This link has expired or is invalid.</h1>')
 

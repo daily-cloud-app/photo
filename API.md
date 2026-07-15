@@ -295,7 +295,7 @@ Soft-delete a photo. Marks status as `deleted`. Storage data is preserved (recov
 
 ## Share Upload URL
 
-Requires `share-url` feature enabled.
+Requires `share-upload-url` feature enabled.
 
 ### POST /photos/share-upload-url
 
@@ -344,9 +344,9 @@ Get a presigned URL using a share token (no auth required).
 
 ---
 
-## Share Download URL (Planned)
+## Share Download URL
 
-Requires `share-url` feature enabled. Allows sharing photos with non-app-users via a browser-accessible download page.
+Requires `share-download-url` feature enabled. Allows sharing photos with non-app-users via a browser-accessible download page.
 
 ### POST /photos/share-download-url
 

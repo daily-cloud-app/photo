@@ -1564,7 +1564,7 @@ def _download_page(request):
         .card {{ background: white; border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; margin: 0 auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
         h1 {{ font-size: 1.5em; color: #333; margin-bottom: 8px; }}
         .subtitle {{ color: #888; font-size: 0.9em; margin-bottom: 24px; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }}
         .photo-card {{ border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
         .photo-card img {{ width: 100%; aspect-ratio: 1; object-fit: cover; cursor: pointer; transition: opacity 0.2s; }}
         .photo-card img:hover {{ opacity: 0.7; }}

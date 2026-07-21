@@ -488,7 +488,7 @@ def photos_list(req: func.HttpRequest) -> func.HttpResponse:
     container = _get_container("photos")
 
     # Query user's photos
-    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'sent_share:') ORDER BY c.createdAt DESC"
+    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND c.status != 'uploading' AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'sent_share:') ORDER BY c.createdAt DESC"
     params = [{"name": "@uid", "value": uid}]
 
     items = list(container.query_items(
@@ -1378,7 +1378,7 @@ def share_download_url(req: func.HttpRequest) -> func.HttpResponse:
 
     # Count matching photos
     container = _get_container("photos")
-    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND ARRAY_CONTAINS(c.labels, @labelId) AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'download_token:')"
+    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND c.status != 'uploading' AND ARRAY_CONTAINS(c.labels, @labelId) AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'download_token:')"
     params = [{"name": "@uid", "value": uid}, {"name": "@labelId", "value": label_id}]
     matching = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
 
@@ -1445,7 +1445,7 @@ def download_page(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse("<h1>This link has expired.</h1>", status_code=410, mimetype="text/html")
 
     # Get photos with label
-    photo_query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND ARRAY_CONTAINS(c.labels, @labelId) AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'download_token:')"
+    photo_query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND c.status != 'uploading' AND ARRAY_CONTAINS(c.labels, @labelId) AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'download_token:')"
     photo_params = [{"name": "@uid", "value": uid}, {"name": "@labelId", "value": label_id}]
     photos = list(container.query_items(query=photo_query, parameters=photo_params, enable_cross_partition_query=True))
 

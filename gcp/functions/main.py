@@ -626,8 +626,8 @@ def _photos_list(request):
             continue
         if item.get('status') == 'deleted':
             continue
-
-        # Generate signed URLs
+        if item.get('status') == 'uploading':
+            continue        # Generate signed URLs
         gcs_key = item.get('gcsKey', f"{_prefix(uid)}{photo_id}")
         thumbnail_key = item.get('thumbnailKey')
 
@@ -1437,6 +1437,7 @@ def _share_download_url(request):
     matching = [
         d for d in docs
         if d.get('status') != 'deleted'
+        and d.get('status') != 'uploading'
         and not d.get('photoId', '').startswith('share_token:')
         and not d.get('photoId', '').startswith('share:')
         and not d.get('photoId', '').startswith('sent_share:')
@@ -1516,6 +1517,7 @@ def _download_page(request):
     photos = [
         d for d in docs
         if d.get('status') != 'deleted'
+        and d.get('status') != 'uploading'
         and not d.get('photoId', '').startswith('share_token:')
         and not d.get('photoId', '').startswith('share:')
         and not d.get('photoId', '').startswith('download_token:')

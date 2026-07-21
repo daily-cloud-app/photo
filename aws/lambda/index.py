@@ -403,6 +403,9 @@ def _photos_list(event):
         # Exclude deleted items
         if item.get('status') == 'deleted':
             continue
+        # Exclude incomplete uploads (uploading with no size)
+        if item.get('status') == 'uploading':
+            continue
         # Exclude share_token records (not photos)
         if item.get('photoId', '').startswith('share_token:'):
             continue
@@ -1314,6 +1317,7 @@ def _share_download_url(event):
     matching = [
         item for item in items
         if item.get('status') != 'deleted'
+        and item.get('status') != 'uploading'
         and not item.get('photoId', '').startswith('share_token:')
         and not item.get('photoId', '').startswith('share:')
         and not item.get('photoId', '').startswith('sent_share:')
@@ -1409,6 +1413,7 @@ def _download_page(event):
     photos = [
         item for item in all_items
         if item.get('status') != 'deleted'
+        and item.get('status') != 'uploading'
         and not item.get('photoId', '').startswith('share_token:')
         and not item.get('photoId', '').startswith('share:')
         and not item.get('photoId', '').startswith('sent_share:')

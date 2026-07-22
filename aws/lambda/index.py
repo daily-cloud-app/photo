@@ -1312,8 +1312,17 @@ def _share_download_url(event):
     # Count matching photos
     from boto3.dynamodb.conditions import Key, Attr
     t = _table()
-    resp = t.query(KeyConditionExpression=Key('userId').eq(uid))
-    items = resp.get('Items', [])
+
+    # Paginate through all user's photos
+    items = []
+    query_params = {'KeyConditionExpression': Key('userId').eq(uid)}
+    while True:
+        resp = t.query(**query_params)
+        items.extend(resp.get('Items', []))
+        if 'LastEvaluatedKey' not in resp:
+            break
+        query_params['ExclusiveStartKey'] = resp['LastEvaluatedKey']
+
     matching = [
         item for item in items
         if item.get('status') != 'deleted'
@@ -1407,9 +1416,16 @@ def _download_page(event):
         if datetime.now(timezone.utc) > created_dt + timedelta(hours=expires_hours):
             return _html_response(410, '<h1>This link has expired.</h1>')
 
-    # Get photos with the specified label
-    resp = t.query(KeyConditionExpression=Key('userId').eq(uid))
-    all_items = resp.get('Items', [])
+    # Get photos with the specified label (paginate through all)
+    all_items = []
+    query_params = {'KeyConditionExpression': Key('userId').eq(uid)}
+    while True:
+        resp = t.query(**query_params)
+        all_items.extend(resp.get('Items', []))
+        if 'LastEvaluatedKey' not in resp:
+            break
+        query_params['ExclusiveStartKey'] = resp['LastEvaluatedKey']
+
     photos = [
         item for item in all_items
         if item.get('status') != 'deleted'

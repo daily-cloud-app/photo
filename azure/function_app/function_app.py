@@ -488,7 +488,7 @@ def photos_list(req: func.HttpRequest) -> func.HttpResponse:
     container = _get_container("photos")
 
     # Query user's photos
-    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND c.status != 'uploading' AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'sent_share:') ORDER BY c.createdAt DESC"
+    query = "SELECT * FROM c WHERE c.userId = @uid AND c.status != 'deleted' AND c.status != 'uploading' AND (NOT IS_DEFINED(c.size) OR c.size > 0) AND NOT STARTSWITH(c.id, 'share_token:') AND NOT STARTSWITH(c.id, 'share:') AND NOT STARTSWITH(c.id, 'sent_share:') ORDER BY c.createdAt DESC"
     params = [{"name": "@uid", "value": uid}]
 
     items = list(container.query_items(

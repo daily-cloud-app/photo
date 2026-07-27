@@ -114,7 +114,7 @@ def _query_user_photos(user_id, prefix=None, limit=None):
         query = query.where('photoId', '>=', prefix).where('photoId', '<', prefix + '\uffff')
     if limit:
         query = query.limit(limit)
-    return query.stream()
+    return [doc.to_dict() for doc in query.stream()]
 
 
 def _generate_signed_url(blob_name, method='GET', content_type=None, expiry=SIGNED_URL_EXPIRY):
@@ -627,6 +627,9 @@ def _photos_list(request):
         if item.get('status') == 'deleted':
             continue
         if item.get('status') == 'uploading':
+            continue
+        # Exclude zero-size records (no actual file)
+        if int(item.get('size', 0)) == 0:
             continue        # Generate signed URLs
         gcs_key = item.get('gcsKey', f"{_prefix(uid)}{photo_id}")
         thumbnail_key = item.get('thumbnailKey')
@@ -1473,7 +1476,10 @@ def _share_download_url(request):
     token = str(uuid.uuid4())
 
     # Save token to Firestore
-    db_client.collection('users').document(uid).collection('photos').document(f'download_token:{token}').set({
+    doc_ref = db.collection(PHOTOS_COLLECTION).document(_doc_id(uid, f'download_token:{token}'))
+    doc_ref.set({
+        'userId': uid,
+        'photoId': f'download_token:{token}',
         'status': 'active',
         'createdAt': datetime.now(timezone.utc).isoformat(),
         'expiresHours': expires_hours,
@@ -1506,21 +1512,19 @@ def _download_page(request):
     if not token:
         return _html_response(400, '<h1>Invalid link.</h1>')
 
-    # Find token record by scanning all users (token is unique)
-    from google.cloud.firestore_v1.base_query import FieldFilter
-    users_ref = db_client.collection('users')
-    token_doc = None
-    uid = None
+    # Find token record
+    query = db.collection(PHOTOS_COLLECTION).where(
+        'photoId', '==', f'download_token:{token}'
+    ).where('status', '==', 'active').limit(1)
+    docs = list(query.stream())
 
-    for user_doc in users_ref.stream():
-        doc_ref = users_ref.document(user_doc.id).collection('photos').document(f'download_token:{token}')
-        doc = doc_ref.get()
-        if doc.exists and doc.to_dict().get('status') == 'active':
-            token_doc = doc.to_dict()
-            uid = user_doc.id
-            break
+    if not docs:
+        return _html_response(404, '<h1>This link has expired or is invalid.</h1>')
 
-    if not token_doc or not uid:
+    token_doc = docs[0].to_dict()
+    uid = token_doc.get('userId', '')
+
+    if not uid:
         return _html_response(404, '<h1>This link has expired or is invalid.</h1>')
 
     label_id = token_doc.get('labelId', '')

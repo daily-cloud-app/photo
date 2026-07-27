@@ -406,6 +406,9 @@ def _photos_list(event):
         # Exclude incomplete uploads (uploading with no size)
         if item.get('status') == 'uploading':
             continue
+        # Exclude zero-size records (no actual file)
+        if int(item.get('size', 0)) == 0:
+            continue
         # Exclude share_token records (not photos)
         if item.get('photoId', '').startswith('share_token:'):
             continue

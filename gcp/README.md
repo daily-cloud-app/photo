@@ -55,6 +55,16 @@ You can customize the deployment by setting environment variables before running
 ### Deleting Resources
 
 ```bash
+gcloud config set project daily-cloud-photo
+gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
+gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
+gsutil -m rm -r gs://daily-cloud-photo-photos
+gsutil rb gs://daily-cloud-photo-photos
+gcloud firestore databases delete --database="(default)"
+```
+
+To delete the entire project (optional):
+```bash
 gcloud projects delete daily-cloud-photo
 ```
 
@@ -152,6 +162,16 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
+```bash
+gcloud config set project daily-cloud-photo
+gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
+gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
+gsutil -m rm -r gs://daily-cloud-photo-photos
+gsutil rb gs://daily-cloud-photo-photos
+gcloud firestore databases delete --database="(default)"
+```
+
+プロジェクトごと削除する場合（任意）:
 ```bash
 gcloud projects delete daily-cloud-photo
 ```

@@ -1,11 +1,18 @@
 # Daily Cloud Photo — Infrastructure Samples
 
+- [English](#english)
+- [日本語](#日本語)
+
+---
+
+## English
+
 Sample backend implementations for the Daily Cloud Photo app. 
 These are reference implementations to help you get started — feel free to modify or use them as a base for your own setup.
 
 All implementations have been verified with the app for basic operations (signup, upload, cloud sync, label sharing, storage trigger).
 
-## Providers
+### Providers
 
 These implementations are provided as samples.
 You are not limited to these providers — any server that implements the [API specification](API.md) will work with the app.
@@ -14,9 +21,7 @@ You are not limited to these providers — any server that implements the [API s
 - [**GCP**](gcp/README.md)
 - [**Azure**](azure/README.md)
 
-
-
-## Service Comparison
+### Service Comparison
 
 | Component | AWS | GCP | Azure |
 |-----------|-----|-----|-------|
@@ -27,3 +32,33 @@ You are not limited to these providers — any server that implements the [API s
 | Auth | Cognito | Firebase Auth | Custom JWT |
 | IaC | CloudFormation | gcloud CLI | ARM Template |
 | Thumbnail Trigger | S3 Event | Eventarc | Blob Trigger |
+
+---
+
+## 日本語
+
+Daily Cloud Photo アプリ用のバックエンド実装サンプルです。
+これらはリファレンス実装であり、自由に変更して利用できます。
+
+すべての実装はアプリとの基本操作（サインアップ、アップロード、クラウド同期、ラベル共有、ストレージトリガー）で動作確認済みです。
+
+### プロバイダー
+
+これらの実装はサンプルとして提供されています。
+[API 仕様](API.md) に準拠するサーバーであれば、これらのプロバイダーに限りません。
+
+- [**AWS**](aws/README.md)
+- [**GCP**](gcp/README.md)
+- [**Azure**](azure/README.md)
+
+### サービス比較
+
+| コンポーネント | AWS | GCP | Azure |
+|---------------|-----|-----|-------|
+| API | API Gateway | Cloud Run | Functions HTTP Trigger |
+| ロジック | Lambda | Cloud Functions | Azure Functions |
+| データベース | DynamoDB | Firestore | Cosmos DB |
+| ファイルストレージ | S3 | Cloud Storage | Blob Storage |
+| 認証 | Cognito | Firebase Auth | Custom JWT |
+| IaC | CloudFormation | gcloud CLI | ARM Template |
+| サムネイルトリガー | S3 Event | Eventarc | Blob Trigger |

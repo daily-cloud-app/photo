@@ -2,73 +2,76 @@
 # IAM
 # ============================================================
 #
-# Gen2 Cloud Functions run on Cloud Run using the default compute
-# service account. We grant that account the minimum roles required for:
-#   - generating signed URLs (signBlob → Service Account Token Creator)
-#   - receiving Eventarc events (storage finalize trigger)
-#   - reading/writing photos and thumbnails (storage.objectAdmin on bucket)
-#   - reading/writing metadata (Firestore user)
-#
-# The Cloud Storage service agent needs pubsub.publisher so it can publish
-# object-finalize events to Eventarc.
+# Instead of relying on the Compute Engine default service account
+# (which may not exist in a brand-new project without the Compute API),
+# we create a dedicated user-managed service account and assign it the
+# minimum roles required. This SA is used as the runtime identity for
+# both Cloud Functions and as the Eventarc trigger identity.
 
-locals {
-  compute_sa = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
-  gcs_agent  = "service-${data.google_project.current.number}@gs-project-accounts.iam.gserviceaccount.com"
-}
+# ── Dedicated runtime service account ──
 
-# ── Runtime service account (compute default) ──
-
-# signBlob for generating V4 signed URLs
-resource "google_project_iam_member" "function_sa_token_creator" {
-  project = var.project_id
-  role    = "roles/iam.serviceAccountTokenCreator"
-  member  = "serviceAccount:${local.compute_sa}"
+resource "google_service_account" "runtime" {
+  project      = var.project_id
+  account_id   = "daily-cloud-photo-runtime"
+  display_name = "Daily Cloud Photo Runtime"
 
   depends_on = [google_project_service.enabled]
 }
 
-# Receive Eventarc events
+# Allow the runtime SA to sign blobs as itself (V4 signed URL generation).
+resource "google_service_account_iam_member" "runtime_token_creator_self" {
+  service_account_id = google_service_account.runtime.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# Receive Eventarc events (storage finalize → trigger function).
 resource "google_project_iam_member" "eventarc_receiver" {
   project = var.project_id
   role    = "roles/eventarc.eventReceiver"
-  member  = "serviceAccount:${local.compute_sa}"
-
-  depends_on = [google_project_service.enabled]
+  member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-# Invoke the trigger function via Run
+# Invoke the backing Cloud Run services (Eventarc → Run).
 resource "google_project_iam_member" "run_invoker" {
   project = var.project_id
   role    = "roles/run.invoker"
-  member  = "serviceAccount:${local.compute_sa}"
-
-  depends_on = [google_project_service.enabled]
+  member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-# Read/write objects in the photos bucket (photos + thumbnails)
-resource "google_storage_bucket_iam_member" "function_photos_admin" {
+# Pull the built container image (required for Cloud Functions Gen2 / Eventarc).
+resource "google_project_iam_member" "artifact_reader" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# Read/write objects in the photos bucket (photos + thumbnails).
+resource "google_storage_bucket_iam_member" "runtime_photos_admin" {
   bucket = google_storage_bucket.photos.name
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${local.compute_sa}"
+  member = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-# Firestore access for metadata
-resource "google_project_iam_member" "function_firestore" {
+# Firestore access for metadata and username mapping.
+resource "google_project_iam_member" "runtime_firestore" {
   project = var.project_id
   role    = "roles/datastore.user"
-  member  = "serviceAccount:${local.compute_sa}"
-
-  depends_on = [google_project_service.enabled]
+  member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
 # ── Cloud Storage service agent ──
 
-# Allow GCS to publish object events to Eventarc/Pub-Sub
+# The GCS service agent must be able to publish object events to
+# Eventarc/Pub-Sub for the storage finalize trigger to fire.
+data "google_storage_project_service_account" "gcs" {
+  project = var.project_id
+
+  depends_on = [google_project_service.enabled]
+}
+
 resource "google_project_iam_member" "gcs_pubsub_publisher" {
   project = var.project_id
   role    = "roles/pubsub.publisher"
-  member  = "serviceAccount:${local.gcs_agent}"
-
-  depends_on = [google_project_service.enabled]
+  member  = "serviceAccount:${data.google_storage_project_service_account.gcs.email_address}"
 }

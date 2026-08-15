@@ -49,10 +49,11 @@ resource "google_cloudfunctions2_function" "api" {
   }
 
   service_config {
-    available_memory   = "256M"
-    timeout_seconds    = 60
-    ingress_settings   = "ALLOW_ALL"
-    max_instance_count = 100
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    ingress_settings      = "ALLOW_ALL"
+    max_instance_count    = 100
+    service_account_email = google_service_account.runtime.email
 
     environment_variables = {
       PHOTOS_BUCKET             = google_storage_bucket.photos.name
@@ -69,7 +70,7 @@ resource "google_cloudfunctions2_function" "api" {
 
   depends_on = [
     google_project_service.enabled,
-    google_project_iam_member.function_sa_token_creator,
+    google_service_account_iam_member.runtime_token_creator_self,
   ]
 }
 
@@ -101,9 +102,10 @@ resource "google_cloudfunctions2_function" "trigger" {
   }
 
   service_config {
-    available_memory   = "512M"
-    timeout_seconds    = 120
-    max_instance_count = 100
+    available_memory      = "512M"
+    timeout_seconds       = 120
+    max_instance_count    = 100
+    service_account_email = google_service_account.runtime.email
 
     environment_variables = {
       PHOTOS_BUCKET = google_storage_bucket.photos.name
@@ -112,9 +114,10 @@ resource "google_cloudfunctions2_function" "trigger" {
   }
 
   event_trigger {
-    trigger_region = var.region
-    event_type     = "google.cloud.storage.object.v1.finalized"
-    retry_policy   = "RETRY_POLICY_DO_NOT_RETRY"
+    trigger_region        = var.region
+    event_type            = "google.cloud.storage.object.v1.finalized"
+    retry_policy          = "RETRY_POLICY_DO_NOT_RETRY"
+    service_account_email = google_service_account.runtime.email
 
     event_filters {
       attribute = "bucket"
@@ -125,6 +128,8 @@ resource "google_cloudfunctions2_function" "trigger" {
   depends_on = [
     google_project_service.enabled,
     google_project_iam_member.eventarc_receiver,
+    google_project_iam_member.run_invoker,
+    google_project_iam_member.artifact_reader,
     google_project_iam_member.gcs_pubsub_publisher,
   ]
 }

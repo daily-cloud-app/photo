@@ -29,8 +29,3 @@ resource "google_project_service" "enabled" {
   # accidentally disrupting other workloads in the project.
   disable_on_destroy = false
 }
-
-# Project metadata (used for the default compute service account etc.)
-data "google_project" "current" {
-  project_id = var.project_id
-}

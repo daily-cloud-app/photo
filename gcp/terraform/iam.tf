@@ -60,6 +60,41 @@ resource "google_project_iam_member" "runtime_firestore" {
   member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+# ── Dedicated Cloud Build service account ──
+#
+# Separate from the runtime SA. Used only by Cloud Build to build the
+# Cloud Functions (Gen2) container images. Roles follow Google's documented
+# minimum for a user-specified build service account.
+
+resource "google_service_account" "build" {
+  project      = var.project_id
+  account_id   = "daily-cloud-photo-build"
+  display_name = "Daily Cloud Photo Build"
+
+  depends_on = [google_project_service.enabled]
+}
+
+# Write build logs
+resource "google_project_iam_member" "build_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+# Push the built image to Artifact Registry
+resource "google_project_iam_member" "build_artifact_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+# Read the uploaded source archive from the source bucket
+resource "google_project_iam_member" "build_storage_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
 # ── Cloud Storage service agent ──
 
 # The GCS service agent must be able to publish object events to

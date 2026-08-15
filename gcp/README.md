@@ -90,6 +90,7 @@ All infrastructure is managed with Terraform (`gcp/terraform/`). `deploy.sh` is 
 - Terraform state is stored remotely in a GCS bucket (`<project_id>-tfstate`), created automatically by `deploy.sh`
 - Re-running `./deploy.sh` reuses the existing state and applies only the diff
 - Managed resources: APIs, Identity Platform config + dedicated API key, Cloud Storage, Firestore + indexes, both Cloud Functions (Gen2), Eventarc trigger, and IAM
+- Two dedicated service accounts: `daily-cloud-photo-runtime` (function/Eventarc runtime) and `daily-cloud-photo-build` (Cloud Build), each with least-privilege roles — no reliance on the Compute Engine default service account
 
 ### Architecture
 
@@ -219,6 +220,7 @@ gcloud projects delete <project_id>
 - Terraform state は GCS バケット（`<project_id>-tfstate`）にリモート保存され、`deploy.sh` が自動作成します
 - `./deploy.sh` を再実行すると既存 state を再利用し、差分のみ適用します
 - 管理対象: API 有効化、Identity Platform 設定 + 専用 API キー、Cloud Storage、Firestore + インデックス、両 Cloud Functions (Gen2)、Eventarc トリガー、IAM
+- 2つの専用サービスアカウント: `daily-cloud-photo-runtime`（関数/Eventarc 実行用）と `daily-cloud-photo-build`（Cloud Build 用）。それぞれ最小権限を付与し、Compute Engine default SA に依存しません
 
 ### アーキテクチャ
 

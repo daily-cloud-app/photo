@@ -56,30 +56,48 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-To keep the project and delete only the resources:
+To destroy the Terraform-managed resources:
 
 ```bash
-gcloud config set project daily-cloud-photo
-gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
-gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
-gsutil -m rm -r gs://daily-cloud-photo-photos
-gsutil rb gs://daily-cloud-photo-photos
-gcloud firestore databases delete --database="(default)"
+cd gcp/terraform
+terraform destroy \
+  -var="project_id=$(gcloud config get-value project)" \
+  -var="region=asia-northeast1"
 ```
+
+Note: the photos bucket has `force_destroy = false`; empty it first if it contains objects. The Terraform state bucket (`<project_id>-tfstate`) is not managed by Terraform — delete it manually if desired.
 
 To delete the entire project (all resources shut down immediately, fully removed after 30 days):
 
 ```bash
-gcloud projects delete daily-cloud-photo
+gcloud projects delete <project_id>
 ```
+
+### Authentication (Identity Platform)
+
+Authentication is fully delegated to Google Cloud Identity Platform / Firebase Auth. The backend does not store passwords or manage tokens itself.
+
+- **Email/Password signup** with username→email mapping (sign in with either)
+- **Email verification** via the standard Identity Platform verification email (link-based)
+- **Sign in** (unverified users are rejected when `REQUIRE_EMAIL=true`)
+- **Password reset** via Identity Platform reset email
+- **Refresh tokens** via the Secure Token API
+
+### Infrastructure as Code (Terraform)
+
+All infrastructure is managed with Terraform (`gcp/terraform/`). `deploy.sh` is a thin wrapper that runs `terraform init/apply` and prints the API endpoint, so the one-command experience is unchanged.
+
+- Terraform state is stored remotely in a GCS bucket (`<project_id>-tfstate`), created automatically by `deploy.sh`
+- Re-running `./deploy.sh` reuses the existing state and applies only the diff
+- Managed resources: APIs, Identity Platform config + dedicated API key, Cloud Storage, Firestore + indexes, both Cloud Functions (Gen2), Eventarc trigger, and IAM
 
 ### Architecture
 
 ```
 User → Cloud Functions (HTTP) → Main Handler (Flask routing)
-                                    ├── Firebase Auth (auth)
+                                    ├── Identity Platform (auth)
                                     ├── Cloud Storage (photo storage + thumbnails)
-                                    ├── Firestore (metadata)
+                                    ├── Firestore (metadata + username mapping)
                                     └── Storage Trigger Function (EXIF + thumbnail generation)
 ```
 
@@ -167,30 +185,48 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-プロジェクトを再利用する場合（リソースのみを削除）：
+Terraform で作成したリソースを削除する場合：
 
 ```bash
-gcloud config set project daily-cloud-photo
-gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
-gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
-gsutil -m rm -r gs://daily-cloud-photo-photos
-gsutil rb gs://daily-cloud-photo-photos
-gcloud firestore databases delete --database="(default)"
+cd gcp/terraform
+terraform destroy \
+  -var="project_id=$(gcloud config get-value project)" \
+  -var="region=asia-northeast1"
 ```
+
+補足: 写真バケットは `force_destroy = false` のため、オブジェクトが残っている場合は先に空にしてください。Terraform state バケット（`<project_id>-tfstate`）は Terraform 管理外です。不要なら手動で削除してください。
 
 プロジェクトごと削除（全リソースを一括停止 → 30 日後に完全消去）：
 
 ```bash
-gcloud projects delete daily-cloud-photo
+gcloud projects delete <project_id>
 ```
+
+### 認証（Identity Platform）
+
+認証は Google Cloud Identity Platform / Firebase Auth に完全に委譲しています。バックエンドはパスワードやトークンを自前で保持しません。
+
+- **メール/パスワードでのサインアップ**（username→email マッピングにより、どちらでもログイン可能）
+- **メールアドレス確認**（Identity Platform 標準の確認メール、リンク方式）
+- **サインイン**（`REQUIRE_EMAIL=true` の場合、未確認ユーザーは拒否）
+- **パスワードリセット**（Identity Platform のリセットメール）
+- **リフレッシュトークン**（Secure Token API）
+
+### Infrastructure as Code（Terraform）
+
+すべてのインフラは Terraform（`gcp/terraform/`）で管理されます。`deploy.sh` は `terraform init/apply` を実行して API エンドポイントを表示するラッパーであり、ワンコマンドの体験は変わりません。
+
+- Terraform state は GCS バケット（`<project_id>-tfstate`）にリモート保存され、`deploy.sh` が自動作成します
+- `./deploy.sh` を再実行すると既存 state を再利用し、差分のみ適用します
+- 管理対象: API 有効化、Identity Platform 設定 + 専用 API キー、Cloud Storage、Firestore + インデックス、両 Cloud Functions (Gen2)、Eventarc トリガー、IAM
 
 ### アーキテクチャ
 
 ```
 ユーザー → Cloud Functions (HTTP) → メインハンドラー (Flask ルーティング)
-                                        ├── Firebase Auth (認証)
+                                        ├── Identity Platform (認証)
                                         ├── Cloud Storage (写真保存 + サムネイル)
-                                        ├── Firestore (メタデータ)
+                                        ├── Firestore (メタデータ + username マッピング)
                                         └── Storage Trigger 関数 (EXIF + サムネイル生成)
 ```
 

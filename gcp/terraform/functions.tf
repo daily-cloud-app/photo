@@ -72,9 +72,7 @@ resource "google_cloudfunctions2_function" "api" {
   depends_on = [
     google_project_service.enabled,
     google_service_account_iam_member.runtime_token_creator_self,
-    google_project_iam_member.build_log_writer,
-    google_project_iam_member.build_artifact_writer,
-    google_project_iam_member.build_storage_viewer,
+    google_project_iam_member.build_run_builder,
   ]
 }
 
@@ -136,8 +134,6 @@ resource "google_cloudfunctions2_function" "trigger" {
     google_project_iam_member.run_invoker,
     google_project_iam_member.artifact_reader,
     google_project_iam_member.gcs_pubsub_publisher,
-    google_project_iam_member.build_log_writer,
-    google_project_iam_member.build_artifact_writer,
-    google_project_iam_member.build_storage_viewer,
+    google_project_iam_member.build_run_builder,
   ]
 }

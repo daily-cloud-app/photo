@@ -56,18 +56,13 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-To destroy the Terraform-managed resources:
+To keep the project (delete the Terraform resources and the state bucket):
 
 ```bash
 cd gcp/terraform
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
   -var="region=asia-northeast1"
-```
-
-The Terraform state bucket is created by `deploy.sh` (not by Terraform), so remove it separately:
-
-```bash
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
@@ -173,18 +168,13 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-Terraform で作成したリソースを削除する場合：
+プロジェクトを再利用する場合（Terraform リソースと state バケットを削除）：
 
 ```bash
 cd gcp/terraform
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
   -var="region=asia-northeast1"
-```
-
-Terraform state バケットは `deploy.sh` が作成します（Terraform 管理外）。別途削除してください：
-
-```bash
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 

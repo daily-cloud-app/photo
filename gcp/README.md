@@ -65,9 +65,13 @@ terraform destroy \
   -var="region=asia-northeast1"
 ```
 
-The Terraform state bucket (`<project_id>-tfstate`) is not managed by Terraform — delete it manually if desired.
+The Terraform state bucket is created by `deploy.sh` (not by Terraform), so remove it separately:
 
-To delete the entire project (all resources shut down immediately, fully removed after 30 days):
+```bash
+gsutil rm -r gs://$(gcloud config get-value project)-tfstate
+```
+
+To delete the entire project instead (all resources shut down immediately, fully removed after 30 days):
 
 ```bash
 gcloud projects delete <project_id>
@@ -178,9 +182,13 @@ terraform destroy \
   -var="region=asia-northeast1"
 ```
 
-Terraform state バケット（`<project_id>-tfstate`）は Terraform 管理外です。不要なら手動で削除してください。
+Terraform state バケットは `deploy.sh` が作成します（Terraform 管理外）。別途削除してください：
 
-プロジェクトごと削除（全リソースを一括停止 → 30 日後に完全消去）：
+```bash
+gsutil rm -r gs://$(gcloud config get-value project)-tfstate
+```
+
+プロジェクトごと削除する場合（全リソースを一括停止 → 30 日後に完全消去）：
 
 ```bash
 gcloud projects delete <project_id>

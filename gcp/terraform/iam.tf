@@ -74,15 +74,29 @@ resource "google_service_account" "build" {
   depends_on = [google_project_service.enabled]
 }
 
-# roles/run.builder is Google's consolidated role for a user-specified
-# build service account when building Cloud Run functions / Cloud Functions
-# (Gen2) from source. It already includes the permissions previously granted
-# individually — build log writing (logging.logEntries.create), reading the
-# uploaded source (storage.objects.get/list), and pushing/pulling images
-# (Artifact Registry) — so those separate roles are no longer needed.
-resource "google_project_iam_member" "build_run_builder" {
+# Google's official docs for a user-specified Cloud Build service account
+# (Cloud Run functions / Cloud Functions Gen2 from source) require these
+# three roles explicitly. In practice, roles/run.builder alone did NOT grant
+# read access to the gcf-v2-sources-* build bucket, so we assign the three
+# documented roles directly.
+#   - logging.logWriter    : write build logs
+#   - artifactregistry.writer : push the built image
+#   - storage.objectViewer : read source from the gcf-v2-sources bucket
+resource "google_project_iam_member" "build_log_writer" {
   project = var.project_id
-  role    = "roles/run.builder"
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_project_iam_member" "build_artifact_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_project_iam_member" "build_storage_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
   member  = "serviceAccount:${google_service_account.build.email}"
 }
 

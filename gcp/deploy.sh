@@ -226,6 +226,26 @@ cd "${TF_DIR}"
 "$TF" init -input=false -reconfigure \
     -backend-config="bucket=${STATE_BUCKET}"
 
+# ── Identity Platform: import if it already exists ──
+# Identity Platform is a per-project singleton. On a brand-new project it does
+# not exist yet, so Terraform will CREATE it. On a project where it was already
+# enabled (e.g. reused projects), Terraform cannot create it again and apply
+# would fail with "Identity Platform has already been enabled".
+# We handle both cases: if the resource is not yet in state, we attempt to
+# import the existing config. If there is nothing to import (new project),
+# the import fails harmlessly and apply creates it.
+if ! "$TF" state list 2>/dev/null | grep -qxF 'google_identity_platform_config.default'; then
+    echo -e "  Checking for an existing Identity Platform config..."
+    if "$TF" import -input=false \
+        -var="project_id=${PROJECT_ID}" \
+        -var="region=${REGION}" \
+        google_identity_platform_config.default "projects/${PROJECT_ID}" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}Imported existing Identity Platform config into state${NC}"
+    else
+        echo -e "  No existing config to import; it will be created."
+    fi
+fi
+
 "$TF" apply -input=false -auto-approve \
     -var="project_id=${PROJECT_ID}" \
     -var="region=${REGION}" \

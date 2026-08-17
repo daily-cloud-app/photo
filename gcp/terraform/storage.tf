@@ -7,7 +7,10 @@ resource "google_storage_bucket" "photos" {
   name          = local.photos_bucket
   project       = var.project_id
   location      = var.region
-  force_destroy = false
+  # Sample project: allow `terraform destroy` to remove the bucket even if it
+  # still contains photos, so teardown is a single command. Set to false if you
+  # want to protect against accidental deletion of user data.
+  force_destroy = true
 
   uniform_bucket_level_access = true
 

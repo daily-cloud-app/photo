@@ -65,7 +65,7 @@ terraform destroy \
   -var="region=asia-northeast1"
 ```
 
-Note: the photos bucket has `force_destroy = false`; empty it first if it contains objects. The Terraform state bucket (`<project_id>-tfstate`) is not managed by Terraform — delete it manually if desired.
+The Terraform state bucket (`<project_id>-tfstate`) is not managed by Terraform — delete it manually if desired.
 
 To delete the entire project (all resources shut down immediately, fully removed after 30 days):
 
@@ -73,27 +73,9 @@ To delete the entire project (all resources shut down immediately, fully removed
 gcloud projects delete <project_id>
 ```
 
-### Authentication (Identity Platform)
-
-Authentication is fully delegated to Google Cloud Identity Platform / Firebase Auth. The backend does not store passwords or manage tokens itself.
-
-- **Email/Password signup** with username→email mapping (sign in with either)
-- **Email verification** via the standard Identity Platform verification email (link-based)
-- **Sign in** (unverified users are rejected when `REQUIRE_EMAIL=true`)
-- **Password reset** via Identity Platform reset email
-- **Refresh tokens** via the Secure Token API
-
-### Infrastructure as Code (Terraform)
-
-All infrastructure is managed with Terraform (`gcp/terraform/`). `deploy.sh` is a thin wrapper that runs `terraform init/apply` and prints the API endpoint, so the one-command experience is unchanged.
-
-- Terraform state is stored remotely in a GCS bucket (`<project_id>-tfstate`), created automatically by `deploy.sh`
-- Re-running `./deploy.sh` reuses the existing state and applies only the diff
-- Cloud Shell no longer bundles Terraform; `deploy.sh` detects the stub and auto-installs a real Terraform CLI into `~/.local/bin` (persists across sessions). No manual install required. The download is verified against the official HashiCorp `SHA256SUMS` before use.
-- Managed resources: APIs, Identity Platform config + dedicated API key, Cloud Storage, Firestore + indexes, both Cloud Functions (Gen2), Eventarc trigger, and IAM
-- Two dedicated service accounts: `daily-cloud-photo-runtime` (function/Eventarc runtime) and `daily-cloud-photo-build` (Cloud Build), each with least-privilege roles — no reliance on the Compute Engine default service account
-
 ### Architecture
+
+Infrastructure is managed with Terraform (`gcp/terraform/`); `deploy.sh` is a wrapper that runs `terraform init/apply` and prints the API endpoint.
 
 ```
 User → Cloud Functions (HTTP) → Main Handler (Flask routing)
@@ -196,7 +178,7 @@ terraform destroy \
   -var="region=asia-northeast1"
 ```
 
-補足: 写真バケットは `force_destroy = false` のため、オブジェクトが残っている場合は先に空にしてください。Terraform state バケット（`<project_id>-tfstate`）は Terraform 管理外です。不要なら手動で削除してください。
+Terraform state バケット（`<project_id>-tfstate`）は Terraform 管理外です。不要なら手動で削除してください。
 
 プロジェクトごと削除（全リソースを一括停止 → 30 日後に完全消去）：
 
@@ -204,27 +186,9 @@ terraform destroy \
 gcloud projects delete <project_id>
 ```
 
-### 認証（Identity Platform）
-
-認証は Google Cloud Identity Platform / Firebase Auth に完全に委譲しています。バックエンドはパスワードやトークンを自前で保持しません。
-
-- **メール/パスワードでのサインアップ**（username→email マッピングにより、どちらでもログイン可能）
-- **メールアドレス確認**（Identity Platform 標準の確認メール、リンク方式）
-- **サインイン**（`REQUIRE_EMAIL=true` の場合、未確認ユーザーは拒否）
-- **パスワードリセット**（Identity Platform のリセットメール）
-- **リフレッシュトークン**（Secure Token API）
-
-### Infrastructure as Code（Terraform）
-
-すべてのインフラは Terraform（`gcp/terraform/`）で管理されます。`deploy.sh` は `terraform init/apply` を実行して API エンドポイントを表示するラッパーであり、ワンコマンドの体験は変わりません。
-
-- Terraform state は GCS バケット（`<project_id>-tfstate`）にリモート保存され、`deploy.sh` が自動作成します
-- `./deploy.sh` を再実行すると既存 state を再利用し、差分のみ適用します
-- Cloud Shell は Terraform を同梱しなくなりました。`deploy.sh` はスタブを検出し、本物の Terraform CLI を `~/.local/bin` に自動インストールします（セッション間で永続）。手動インストールは不要です。ダウンロードは公式 HashiCorp の `SHA256SUMS` で検証してから使用します。
-- 管理対象: API 有効化、Identity Platform 設定 + 専用 API キー、Cloud Storage、Firestore + インデックス、両 Cloud Functions (Gen2)、Eventarc トリガー、IAM
-- 2つの専用サービスアカウント: `daily-cloud-photo-runtime`（関数/Eventarc 実行用）と `daily-cloud-photo-build`（Cloud Build 用）。それぞれ最小権限を付与し、Compute Engine default SA に依存しません
-
 ### アーキテクチャ
+
+インフラは Terraform（`gcp/terraform/`）で管理されます。`deploy.sh` は `terraform init/apply` を実行して API エンドポイントを表示するラッパーです。
 
 ```
 ユーザー → Cloud Functions (HTTP) → メインハンドラー (Flask ルーティング)

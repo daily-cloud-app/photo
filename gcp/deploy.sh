@@ -92,18 +92,58 @@ install_terraform() {
         exit 1
     fi
 
-    url="https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${arch}.zip"
+    # A SHA-256 tool is mandatory — never install an unverified binary.
+    local sha_tool=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha_tool="sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        sha_tool="shasum -a 256"
+    else
+        echo -e "${RED}ERROR: No SHA-256 tool (sha256sum/shasum) available; cannot verify the download.${NC}"
+        exit 1
+    fi
+
+    local zip_name="terraform_${TF_VERSION}_linux_${arch}.zip"
+    local base="https://releases.hashicorp.com/terraform/${TF_VERSION}"
+    url="${base}/${zip_name}"
+    local sums_url="${base}/terraform_${TF_VERSION}_SHA256SUMS"
     tmp="$(mktemp -d)"
 
     echo -e "  Downloading Terraform ${TF_VERSION} (${arch})..."
-    if ! curl -fsSL "$url" -o "${tmp}/terraform.zip"; then
+    if ! curl -fsSL "$url" -o "${tmp}/${zip_name}"; then
         echo -e "${RED}ERROR: Failed to download Terraform from ${url}${NC}"
         rm -rf "$tmp"
         exit 1
     fi
 
+    echo -e "  Downloading checksums..."
+    if ! curl -fsSL "$sums_url" -o "${tmp}/SHA256SUMS"; then
+        echo -e "${RED}ERROR: Failed to download SHA256SUMS from ${sums_url}${NC}"
+        rm -rf "$tmp"
+        exit 1
+    fi
+
+    # Extract the expected checksum for our specific zip.
+    local expected actual
+    expected="$(grep " ${zip_name}\$" "${tmp}/SHA256SUMS" | awk '{print $1}')"
+    if [ -z "$expected" ]; then
+        echo -e "${RED}ERROR: Could not find a checksum for ${zip_name} in SHA256SUMS.${NC}"
+        rm -rf "$tmp"
+        exit 1
+    fi
+
+    actual="$(${sha_tool} "${tmp}/${zip_name}" | awk '{print $1}')"
+    if [ "$expected" != "$actual" ]; then
+        echo -e "${RED}ERROR: Checksum verification failed for ${zip_name}.${NC}"
+        echo -e "${RED}  expected: ${expected}${NC}"
+        echo -e "${RED}  actual:   ${actual}${NC}"
+        rm -rf "$tmp"
+        exit 1
+    fi
+    echo -e "  ${GREEN}Checksum verified (SHA-256)${NC}"
+
     mkdir -p "$LOCAL_BIN"
-    unzip -o -q "${tmp}/terraform.zip" -d "$LOCAL_BIN"
+    unzip -o -q "${tmp}/${zip_name}" -d "$LOCAL_BIN"
     chmod +x "${LOCAL_BIN}/terraform"
     rm -rf "$tmp"
 }

@@ -109,6 +109,21 @@ resource "google_project_iam_member" "build_storage_viewer" {
   member  = "serviceAccount:${google_service_account.build.email}"
 }
 
+# IAM is eventually consistent: right after granting the build SA its roles,
+# propagation can take up to ~1 minute. Without a wait, the first apply can
+# fail with "Access to bucket gcf-v2-sources-* denied ... grant Storage Object
+# Viewer" when Cloud Functions tries to read the build source. This sleep lets
+# the grants propagate so the first apply succeeds in one pass.
+resource "time_sleep" "wait_build_iam" {
+  create_duration = "60s"
+
+  depends_on = [
+    google_project_iam_member.build_log_writer,
+    google_project_iam_member.build_artifact_writer,
+    google_project_iam_member.build_storage_viewer,
+  ]
+}
+
 # ── Cloud Storage service agent ──
 
 # The GCS service agent must be able to publish object events to

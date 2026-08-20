@@ -59,20 +59,28 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-To keep the project (delete the Terraform resources and the state bucket):
+To keep the project but delete the Terraform-managed resources (run from the `gcp` directory, e.g. in Cloud Shell):
 
 ```bash
-cd gcp/terraform
+gcloud config set project daily-cloud-photo
+cd terraform
+terraform init -reconfigure \
+  -backend-config="bucket=$(gcloud config get-value project)-tfstate"
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
   -var="region=asia-northeast1"
+```
+
+The Terraform state bucket (`<project_id>-tfstate`) is kept so the project can be redeployed later. To remove it as well:
+
+```bash
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
 To delete the entire project instead (all resources shut down immediately, fully removed after 30 days):
 
 ```bash
-gcloud projects delete <project_id>
+gcloud projects delete daily-cloud-photo
 ```
 
 ### Architecture
@@ -174,20 +182,28 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-プロジェクトを再利用する場合（Terraform リソースと state バケットを削除）：
+プロジェクトは残して Terraform 管理リソースだけ削除する場合（`gcp` ディレクトリ内で実行。例: Cloud Shell）：
 
 ```bash
-cd gcp/terraform
+gcloud config set project daily-cloud-photo
+cd terraform
+terraform init -reconfigure \
+  -backend-config="bucket=$(gcloud config get-value project)-tfstate"
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
   -var="region=asia-northeast1"
+```
+
+Terraform state バケット（`<project_id>-tfstate`）は、後で再デプロイできるように残します。不要なら削除：
+
+```bash
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
 プロジェクトごと削除する場合（全リソースを一括停止 → 30 日後に完全消去）：
 
 ```bash
-gcloud projects delete <project_id>
+gcloud projects delete daily-cloud-photo
 ```
 
 ### アーキテクチャ

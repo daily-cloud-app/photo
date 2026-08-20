@@ -59,7 +59,7 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-To keep the project but delete all created resources (run from the `gcp` directory, e.g. in Cloud Shell):
+To keep the project (delete the Terraform resources and the state bucket):
 
 ```bash
 gcloud config set project daily-cloud-photo
@@ -71,8 +71,6 @@ terraform destroy \
   -var="region=asia-northeast1"
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
-
-The last line removes the Terraform state bucket. Re-running `./deploy.sh` recreates it automatically, so a later redeploy still works.
 
 To delete the entire project instead (all resources shut down immediately, fully removed after 30 days):
 
@@ -179,7 +177,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-プロジェクトは残して作成したリソースを削除する場合（`gcp` ディレクトリ内で実行。例: Cloud Shell）：
+プロジェクトを再利用する場合（Terraform リソースと state バケットを削除）：
 
 ```bash
 gcloud config set project daily-cloud-photo
@@ -191,8 +189,6 @@ terraform destroy \
   -var="region=asia-northeast1"
 gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
-
-最後の行は Terraform state バケットを削除します。`./deploy.sh` を再実行すれば自動で作り直されるため、後から再デプロイしても問題ありません。
 
 プロジェクトごと削除する場合（全リソースを一括停止 → 30 日後に完全消去）：
 

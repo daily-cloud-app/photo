@@ -21,6 +21,9 @@ ENABLE_SHARE_URL = os.environ.get('ENABLE_SHARE_URL', 'true') == 'true'
 ENABLE_SHARE_DOWNLOAD_URL = os.environ.get('ENABLE_SHARE_DOWNLOAD_URL', 'true') == 'true'
 ENABLE_LABEL_SHARING = os.environ.get('ENABLE_LABEL_SHARING', 'true') == 'true'
 APP_DISPLAY_NAME = os.environ.get('APP_DISPLAY_NAME', 'Daily Cloud Photo Backend')
+# Share URL validity (hours). Admin-configurable; surfaced via /info.
+SHARE_UPLOAD_URL_EXPIRY_HOURS = int(os.environ.get('SHARE_UPLOAD_URL_EXPIRY_HOURS', '24'))
+SHARE_DOWNLOAD_URL_EXPIRY_HOURS = int(os.environ.get('SHARE_DOWNLOAD_URL_EXPIRY_HOURS', '72'))
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-northeast-1')
 
 # ── AWS Clients ──
@@ -173,12 +176,19 @@ def _info(event):
     if ENABLE_LABEL_SHARING:
         features.append('label-sharing')
 
-    return _ok(200, {
+    info = {
         'name': APP_DISPLAY_NAME,
         'version': '1.0.0',
         'signupFields': fields,
         'features': features,
-    })
+    }
+    # Advertise share URL validity so the app can show it in the result popup.
+    if ENABLE_SHARE_URL:
+        info['uploadUrlExpiryHours'] = SHARE_UPLOAD_URL_EXPIRY_HOURS
+    if ENABLE_SHARE_DOWNLOAD_URL:
+        info['downloadUrlExpiryHours'] = SHARE_DOWNLOAD_URL_EXPIRY_HOURS
+
+    return _ok(200, info)
 
 
 # ============================================================
@@ -765,7 +775,7 @@ def _share_upload_url(event):
         return _err(401, 'Authentication required')
 
     b = _body(event)
-    expires_hours = int(b.get('expiresHours', 24))
+    expires_hours = int(b.get('expiresHours', SHARE_UPLOAD_URL_EXPIRY_HOURS))
     label_id = b.get('labelId', '') or ''
     label_name = b.get('labelName', '') or ''
 
@@ -1327,7 +1337,7 @@ def _share_download_url(event):
     b = _body(event)
     label_id = b.get('labelId', '')
     label_name = b.get('labelName', '')
-    expires_hours = int(b.get('expiresHours', 72))
+    expires_hours = int(b.get('expiresHours', SHARE_DOWNLOAD_URL_EXPIRY_HOURS))
     date_from = b.get('dateFrom')
     date_to = b.get('dateTo')
 

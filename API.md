@@ -28,13 +28,17 @@ Returns server configuration. No authentication required.
   "name": "Daily Cloud Photo Backend",
   "version": "1.0.0",
   "signupFields": ["username", "password", "email"],
-  "features": ["share-upload-url", "share-download-url", "label-sharing"]
+  "features": ["share-upload-url", "share-download-url", "label-sharing"],
+  "uploadUrlExpiryHours": 24,
+  "downloadUrlExpiryHours": 72
 }
 ```
 
 - `name`: Display name shown in the app
 - `signupFields`: Fields required for signup (dynamic based on server config)
 - `features`: Enabled features. Possible values: `share-upload-url`, `share-download-url`, `label-sharing`
+- `uploadUrlExpiryHours` (optional): Validity, in hours, of issued upload URLs. Present only when the `share-upload-url` feature is enabled. The app displays this in the URL result dialog and omits any expiry text when it is absent.
+- `downloadUrlExpiryHours` (optional): Validity, in hours, of issued download URLs. Present only when the `share-download-url` feature is enabled.
 
 ---
 
@@ -304,9 +308,13 @@ Generate a temporary upload page URL for third parties (no login required for up
 **Request Body:**
 ```json
 {
-  "expiresHours": 24
+  "expiresHours": 24,
+  "labelId": "custom:123 (optional)",
+  "labelName": "Family (optional, for display)"
 }
 ```
+
+`expiresHours` is optional; when omitted, the server uses its configured default (`uploadUrlExpiryHours` from `/info`).
 
 **Response 200:**
 ```json
@@ -362,6 +370,8 @@ Generate a temporary download page URL. Photos are filtered by label and optiona
   "dateTo": "2025-12-31T23:59:59Z (optional)"
 }
 ```
+
+`expiresHours` is optional; when omitted, the server uses its configured default (`downloadUrlExpiryHours` from `/info`).
 
 **Response 200:**
 ```json

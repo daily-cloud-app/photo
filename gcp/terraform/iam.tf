@@ -60,6 +60,15 @@ resource "google_project_iam_member" "runtime_firestore" {
   member  = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+# Firebase Authentication admin access. The API calls the Firebase Admin SDK
+# (get_user / get_user_by_email in /auth/confirm, and user lookups elsewhere),
+# which require admin permissions on Identity Platform / Firebase Auth.
+resource "google_project_iam_member" "runtime_firebaseauth_admin" {
+  project = var.project_id
+  role    = "roles/firebaseauth.admin"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 # ── Dedicated Cloud Build service account ──
 #
 # Separate from the runtime SA. Used only by Cloud Build to build the

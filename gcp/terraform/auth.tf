@@ -30,10 +30,17 @@ resource "google_identity_platform_config" "default" {
 # which require a browser-style API key. We create a dedicated key
 # restricted to only those APIs instead of reusing an arbitrary project key.
 
+# API key names are retained for ~30 days after deletion (soft-delete), which
+# blocks re-creating a key with the same fixed name when a project is reused.
+# A random suffix keeps the name unique across destroy/apply cycles.
+resource "random_id" "identity_key" {
+  byte_length = 4
+}
+
 resource "google_apikeys_key" "identity" {
   provider     = google-beta
   project      = var.project_id
-  name         = "daily-cloud-photo-identity-key"
+  name         = "daily-cloud-photo-identity-key-${random_id.identity_key.hex}"
   display_name = "Daily Cloud Photo — Identity Toolkit"
 
   restrictions {

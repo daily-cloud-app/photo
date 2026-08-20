@@ -43,7 +43,10 @@ You can customize the deployment by setting environment variables before running
 | REQUIRE_EMAIL | `true` | Require email for signup |
 | REQUIRE_PHONE | `false` | Require phone number for signup |
 | ENABLE_SHARE_URL | `true` | Enable upload URL sharing feature |
+| ENABLE_SHARE_DOWNLOAD_URL | `true` | Enable download URL sharing feature |
 | ENABLE_LABEL_SHARING | `true` | Enable label sharing between users |
+| SHARE_UPLOAD_URL_EXPIRY_HOURS | `24` | Validity (hours) of issued upload URLs |
+| SHARE_DOWNLOAD_URL_EXPIRY_HOURS | `72` | Validity (hours) of issued download URLs |
 | APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | Display name shown in the app |
 
 ### Connecting the App
@@ -56,18 +59,21 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-To keep the project and delete only the resources:
+To keep the project (delete the Terraform resources and the state bucket):
 
 ```bash
 gcloud config set project daily-cloud-photo
-gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
-gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
-gsutil -m rm -r gs://daily-cloud-photo-photos
-gsutil rb gs://daily-cloud-photo-photos
-gcloud firestore databases delete --database="(default)"
+gcloud auth application-default set-quota-project daily-cloud-photo
+cd terraform
+terraform init -reconfigure \
+  -backend-config="bucket=$(gcloud config get-value project)-tfstate"
+terraform destroy \
+  -var="project_id=$(gcloud config get-value project)" \
+  -var="region=asia-northeast1" \
+  && gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
-To delete the entire project (all resources shut down immediately, fully removed after 30 days):
+To delete the entire project instead (all resources shut down immediately, fully removed after 30 days):
 
 ```bash
 gcloud projects delete daily-cloud-photo
@@ -75,11 +81,13 @@ gcloud projects delete daily-cloud-photo
 
 ### Architecture
 
+Infrastructure is managed with Terraform (`gcp/terraform/`); `deploy.sh` is a wrapper that runs `terraform init/apply` and prints the API endpoint.
+
 ```
 User → Cloud Functions (HTTP) → Main Handler (Flask routing)
-                                    ├── Firebase Auth (auth)
+                                    ├── Identity Platform (auth)
                                     ├── Cloud Storage (photo storage + thumbnails)
-                                    ├── Firestore (metadata)
+                                    ├── Firestore (metadata + username mapping)
                                     └── Storage Trigger Function (EXIF + thumbnail generation)
 ```
 
@@ -154,7 +162,10 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 | REQUIRE_EMAIL | `true` | サインアップ時にメール必須 |
 | REQUIRE_PHONE | `false` | サインアップ時に電話番号必須 |
 | ENABLE_SHARE_URL | `true` | アップロード URL 共有機能 |
+| ENABLE_SHARE_DOWNLOAD_URL | `true` | ダウンロード URL 共有機能 |
 | ENABLE_LABEL_SHARING | `true` | ラベル共有機能 |
+| SHARE_UPLOAD_URL_EXPIRY_HOURS | `24` | アップロード URL の有効期限（時間） |
+| SHARE_DOWNLOAD_URL_EXPIRY_HOURS | `72` | ダウンロード URL の有効期限（時間） |
 | APP_DISPLAY_NAME | `Daily Cloud Photo Backend` | アプリでの表示名 |
 
 ### アプリでの接続
@@ -167,18 +178,21 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
-プロジェクトを再利用する場合（リソースのみを削除）：
+プロジェクトを再利用する場合（Terraform リソースと state バケットを削除）：
 
 ```bash
 gcloud config set project daily-cloud-photo
-gcloud functions delete daily-cloud-photo-api --region=asia-northeast1 --gen2 -q
-gcloud functions delete daily-cloud-photo-storage-trigger --region=asia-northeast1 --gen2 -q
-gsutil -m rm -r gs://daily-cloud-photo-photos
-gsutil rb gs://daily-cloud-photo-photos
-gcloud firestore databases delete --database="(default)"
+gcloud auth application-default set-quota-project daily-cloud-photo
+cd terraform
+terraform init -reconfigure \
+  -backend-config="bucket=$(gcloud config get-value project)-tfstate"
+terraform destroy \
+  -var="project_id=$(gcloud config get-value project)" \
+  -var="region=asia-northeast1" \
+  && gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
-プロジェクトごと削除（全リソースを一括停止 → 30 日後に完全消去）：
+プロジェクトごと削除する場合（全リソースを一括停止 → 30 日後に完全消去）：
 
 ```bash
 gcloud projects delete daily-cloud-photo
@@ -186,11 +200,13 @@ gcloud projects delete daily-cloud-photo
 
 ### アーキテクチャ
 
+インフラは Terraform（`gcp/terraform/`）で管理されます。`deploy.sh` は `terraform init/apply` を実行して API エンドポイントを表示するラッパーです。
+
 ```
 ユーザー → Cloud Functions (HTTP) → メインハンドラー (Flask ルーティング)
-                                        ├── Firebase Auth (認証)
+                                        ├── Identity Platform (認証)
                                         ├── Cloud Storage (写真保存 + サムネイル)
-                                        ├── Firestore (メタデータ)
+                                        ├── Firestore (メタデータ + username マッピング)
                                         └── Storage Trigger 関数 (EXIF + サムネイル生成)
 ```
 

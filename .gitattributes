@@ -1,0 +1,2 @@
+# Ensure shell scripts always use LF line endings (required for Cloud Shell / bash)
+*.sh text eol=lf

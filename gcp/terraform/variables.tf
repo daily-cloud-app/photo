@@ -55,6 +55,18 @@ variable "app_display_name" {
   default     = "Daily Cloud Photo Backend"
 }
 
+variable "share_upload_url_expiry_hours" {
+  description = "Validity (hours) of issued upload URLs"
+  type        = number
+  default     = 24
+}
+
+variable "share_download_url_expiry_hours" {
+  description = "Validity (hours) of issued download URLs"
+  type        = number
+  default     = 72
+}
+
 # ── Derived locals ──
 locals {
   photos_bucket = var.bucket_name != "" ? var.bucket_name : "${var.project_id}-photos"

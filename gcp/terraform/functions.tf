@@ -65,6 +65,8 @@ resource "google_cloudfunctions2_function" "api" {
       ENABLE_SHARE_URL          = tostring(var.enable_share_url)
       ENABLE_SHARE_DOWNLOAD_URL = tostring(var.enable_share_download_url)
       ENABLE_LABEL_SHARING      = tostring(var.enable_label_sharing)
+      SHARE_UPLOAD_URL_EXPIRY_HOURS   = tostring(var.share_upload_url_expiry_hours)
+      SHARE_DOWNLOAD_URL_EXPIRY_HOURS = tostring(var.share_download_url_expiry_hours)
       APP_DISPLAY_NAME          = var.app_display_name
     }
   }

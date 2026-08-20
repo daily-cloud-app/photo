@@ -33,6 +33,8 @@ REQUIRE_PHONE="${REQUIRE_PHONE:-false}"
 ENABLE_SHARE_URL="${ENABLE_SHARE_URL:-true}"
 ENABLE_SHARE_DOWNLOAD_URL="${ENABLE_SHARE_DOWNLOAD_URL:-true}"
 ENABLE_LABEL_SHARING="${ENABLE_LABEL_SHARING:-true}"
+SHARE_UPLOAD_URL_EXPIRY_HOURS="${SHARE_UPLOAD_URL_EXPIRY_HOURS:-24}"
+SHARE_DOWNLOAD_URL_EXPIRY_HOURS="${SHARE_DOWNLOAD_URL_EXPIRY_HOURS:-72}"
 APP_DISPLAY_NAME="${APP_DISPLAY_NAME:-Daily Cloud Photo Backend}"
 
 # Terraform CLI settings
@@ -255,6 +257,8 @@ fi
     -var="enable_share_url=${ENABLE_SHARE_URL}" \
     -var="enable_share_download_url=${ENABLE_SHARE_DOWNLOAD_URL}" \
     -var="enable_label_sharing=${ENABLE_LABEL_SHARING}" \
+    -var="share_upload_url_expiry_hours=${SHARE_UPLOAD_URL_EXPIRY_HOURS}" \
+    -var="share_download_url_expiry_hours=${SHARE_DOWNLOAD_URL_EXPIRY_HOURS}" \
     -var="app_display_name=${APP_DISPLAY_NAME}"
 echo ""
 

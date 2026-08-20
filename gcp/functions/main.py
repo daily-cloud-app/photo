@@ -27,6 +27,9 @@ ENABLE_SHARE_DOWNLOAD_URL = os.environ.get('ENABLE_SHARE_DOWNLOAD_URL', 'true') 
 ENABLE_LABEL_SHARING = os.environ.get('ENABLE_LABEL_SHARING', 'true') == 'true'
 APP_DISPLAY_NAME = os.environ.get('APP_DISPLAY_NAME', 'Daily Cloud Photo Backend')
 SIGNED_URL_EXPIRY = 3600  # 1 hour
+# Share URL validity (hours). Admin-configurable; surfaced via /info.
+SHARE_UPLOAD_URL_EXPIRY_HOURS = int(os.environ.get('SHARE_UPLOAD_URL_EXPIRY_HOURS', '24'))
+SHARE_DOWNLOAD_URL_EXPIRY_HOURS = int(os.environ.get('SHARE_DOWNLOAD_URL_EXPIRY_HOURS', '72'))
 
 # ── Initialize Firebase & GCP Clients ──
 if not firebase_admin._apps:
@@ -367,12 +370,19 @@ def _info(request):
     if ENABLE_LABEL_SHARING:
         features.append('label-sharing')
 
-    return _ok(200, {
+    info = {
         'name': APP_DISPLAY_NAME,
         'version': '1.0.0',
         'signupFields': fields,
         'features': features,
-    })
+    }
+    # Advertise share URL validity so the app can show it in the result popup.
+    if ENABLE_SHARE_URL:
+        info['uploadUrlExpiryHours'] = SHARE_UPLOAD_URL_EXPIRY_HOURS
+    if ENABLE_SHARE_DOWNLOAD_URL:
+        info['downloadUrlExpiryHours'] = SHARE_DOWNLOAD_URL_EXPIRY_HOURS
+
+    return _ok(200, info)
 
 
 # ============================================================
@@ -1032,7 +1042,7 @@ def _share_upload_url(request):
         return _err(401, 'Authentication required')
 
     body = request.get_json(silent=True) or {}
-    expires_hours = int(body.get('expiresHours', 24))
+    expires_hours = int(body.get('expiresHours', SHARE_UPLOAD_URL_EXPIRY_HOURS))
     label_id = body.get('labelId', '') or ''
     label_name = body.get('labelName', '') or ''
 
@@ -1546,7 +1556,7 @@ def _share_download_url(request):
     data = request.get_json(silent=True) or {}
     label_id = data.get('labelId', '')
     label_name = data.get('labelName', '')
-    expires_hours = int(data.get('expiresHours', 72))
+    expires_hours = int(data.get('expiresHours', SHARE_DOWNLOAD_URL_EXPIRY_HOURS))
 
     if not label_id:
         return _err(400, 'labelId is required')

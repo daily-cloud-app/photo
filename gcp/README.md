@@ -63,13 +63,14 @@ To keep the project (delete the Terraform resources and the state bucket):
 
 ```bash
 gcloud config set project daily-cloud-photo
+gcloud auth application-default set-quota-project daily-cloud-photo
 cd terraform
 terraform init -reconfigure \
   -backend-config="bucket=$(gcloud config get-value project)-tfstate"
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
-  -var="region=asia-northeast1"
-gsutil rm -r gs://$(gcloud config get-value project)-tfstate
+  -var="region=asia-northeast1" \
+  && gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
 To delete the entire project instead (all resources shut down immediately, fully removed after 30 days):
@@ -181,13 +182,14 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 ```bash
 gcloud config set project daily-cloud-photo
+gcloud auth application-default set-quota-project daily-cloud-photo
 cd terraform
 terraform init -reconfigure \
   -backend-config="bucket=$(gcloud config get-value project)-tfstate"
 terraform destroy \
   -var="project_id=$(gcloud config get-value project)" \
-  -var="region=asia-northeast1"
-gsutil rm -r gs://$(gcloud config get-value project)-tfstate
+  -var="region=asia-northeast1" \
+  && gsutil rm -r gs://$(gcloud config get-value project)-tfstate
 ```
 
 プロジェクトごと削除する場合（全リソースを一括停止 → 30 日後に完全消去）：

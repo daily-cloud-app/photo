@@ -125,20 +125,37 @@ echo ""
 # ============================================================
 echo "[3/7] Provisioning & configuring Microsoft Entra External ID..."
 
-# Small helper: call Microsoft Graph with the external-tenant token.
-# Usage: graph_call <METHOD> <URL> [<json-body>]  → prints response body.
+# Call Microsoft Graph with the external-tenant token.
+# Usage: graph_call <METHOD> <URL> [<json-body>]
+#   - prints the response body on stdout
+#   - returns 0 only for HTTP 2xx; non-2xx returns 1 and logs the status/body
+#     to stderr so callers can reliably detect failures (no silent success).
+# We append the HTTP status as a trailing line (via -w) and split it off, which
+# works across curl versions (older curl lacks --fail-with-body).
 GRAPH_TOKEN=""
 graph_call() {
     local method="$1" url="$2" body="${3:-}"
+    local raw http_code resp
     if [ -n "$body" ]; then
-        curl -s -X "$method" "$url" \
+        raw=$(curl -sS -w $'\n%{http_code}' -X "$method" "$url" \
             -H "Authorization: Bearer $GRAPH_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "$body"
+            -d "$body")
     else
-        curl -s -X "$method" "$url" \
-            -H "Authorization: Bearer $GRAPH_TOKEN"
+        raw=$(curl -sS -w $'\n%{http_code}' -X "$method" "$url" \
+            -H "Authorization: Bearer $GRAPH_TOKEN")
     fi
+    http_code="${raw##*$'\n'}"   # last line
+    resp="${raw%$'\n'*}"         # everything before the last line
+    printf '%s' "$resp"
+    case "$http_code" in
+        2*) return 0 ;;
+        *)
+            echo "  Graph $method $url -> HTTP $http_code" >&2
+            [ -n "$resp" ] && echo "  Response: $resp" >&2
+            return 1
+            ;;
+    esac
 }
 
 json_get() {
@@ -226,8 +243,12 @@ fi
 # ── 3c. App registration (public client + native authentication) ──
 if [ -n "$ENTRA_CLIENT_ID" ]; then
     echo "  Using existing app registration: $ENTRA_CLIENT_ID"
-    ENTRA_APP_OBJECT_ID=$(graph_call GET \
-        "https://graph.microsoft.com/v1.0/applications(appId='$ENTRA_CLIENT_ID')" | json_get id)
+    APP_JSON=$(graph_call GET "https://graph.microsoft.com/v1.0/applications(appId='$ENTRA_CLIENT_ID')"); RC=$?
+    if [ $RC -ne 0 ]; then
+        echo "  ERROR: Could not read the existing app registration ($ENTRA_CLIENT_ID)."
+        exit 1
+    fi
+    ENTRA_APP_OBJECT_ID=$(echo "$APP_JSON" | json_get id)
 else
     echo "  Creating app registration '$ENTRA_APP_DISPLAY_NAME' ..."
     # Public client (isFallbackPublicClient) + native auth enabled. The
@@ -243,22 +264,29 @@ print(json.dumps({
 }))
 PY
 )
-    CREATED_APP=$(graph_call POST "https://graph.microsoft.com/v1.0/applications" "$APP_BODY")
+    CREATED_APP=$(graph_call POST "https://graph.microsoft.com/v1.0/applications" "$APP_BODY"); RC=$?
     ENTRA_CLIENT_ID=$(echo "$CREATED_APP" | json_get appId)
     ENTRA_APP_OBJECT_ID=$(echo "$CREATED_APP" | json_get id)
 
-    if [ -z "$ENTRA_CLIENT_ID" ]; then
-        echo "  ERROR: App registration failed. Graph response:"
-        echo "  $CREATED_APP"
+    if [ $RC -ne 0 ] || [ -z "$ENTRA_CLIENT_ID" ]; then
+        echo "  ERROR: App registration failed."
         exit 1
     fi
     echo "  App registration created. client_id=$ENTRA_CLIENT_ID"
 fi
 
 # Ensure native authentication is enabled on the app (idempotent for reuse).
+# This is required for the native-auth API to work, so fail loudly on error.
 if [ -n "$ENTRA_APP_OBJECT_ID" ]; then
     graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
-        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null || true
+        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null; RC=$?
+    if [ $RC -ne 0 ]; then
+        echo "  ERROR: Failed to enable native authentication on the app."
+        exit 1
+    fi
+else
+    echo "  ERROR: Could not resolve the app object id; cannot enable native auth."
+    exit 1
 fi
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
@@ -267,14 +295,24 @@ fi
 echo "  Enabling Email OTP authentication method (SSPR prerequisite)..."
 graph_call PATCH \
     "https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/email" \
-    '{"@odata.type":"#microsoft.graph.emailAuthenticationMethodConfiguration","state":"enabled","allowExternalIdToUseEmailOtp":"enabled"}' >/dev/null || \
-    echo "  WARNING: Could not enable Email OTP policy; SSPR may not work until enabled."
+    '{"@odata.type":"#microsoft.graph.emailAuthenticationMethodConfiguration","state":"enabled","allowExternalIdToUseEmailOtp":"enabled"}' >/dev/null; RC=$?
+if [ $RC -ne 0 ]; then
+    echo "  ERROR: Failed to enable the Email OTP policy (SSPR prerequisite)."
+    echo "  Ensure the signed-in user has the 'Authentication Policy Administrator' role."
+    exit 1
+fi
 
 # ── 3e. Sign-up/sign-in user flow (Email+Password) + app association ──
-# Create the user flow only if one with our name doesn't already exist.
+# Idempotent: create the flow if absent; if a flow with our name already exists,
+# converge its state by ensuring the current app is in includeApplications.
 echo "  Configuring sign-up/sign-in user flow '$ENTRA_USER_FLOW_NAME'..."
 FLOWS_JSON=$(graph_call GET \
-    "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows?\$select=id,displayName")
+    "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows?\$select=id,displayName"); RC=$?
+if [ $RC -ne 0 ]; then
+    echo "  ERROR: Could not list user flows."
+    echo "  Ensure the signed-in user has the 'External ID User Flow Administrator' role."
+    exit 1
+fi
 EXISTING_FLOW_ID=$(echo "$FLOWS_JSON" | python3 -c "
 import sys,json
 name='$ENTRA_USER_FLOW_NAME'
@@ -286,8 +324,54 @@ except Exception:
     pass" 2>/dev/null || echo "")
 
 if [ -n "$EXISTING_FLOW_ID" ]; then
-    echo "  Reusing existing user flow (id=$EXISTING_FLOW_ID)."
+    echo "  Found existing user flow (id=$EXISTING_FLOW_ID); converging configuration..."
     ENTRA_USER_FLOW_ID="$EXISTING_FLOW_ID"
+
+    # Read the flow's current application association.
+    FLOW_JSON=$(graph_call GET \
+        "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows/$EXISTING_FLOW_ID"); RC=$?
+    if [ $RC -ne 0 ]; then
+        echo "  ERROR: Could not read the existing user flow."
+        exit 1
+    fi
+
+    APP_INCLUDED=$(echo "$FLOW_JSON" | python3 -c "
+import sys,json
+app_id='$ENTRA_CLIENT_ID'
+try:
+    d=json.load(sys.stdin)
+    apps=(d.get('conditions') or {}).get('applications') or {}
+    inc=apps.get('includeApplications') or []
+    print('yes' if any(a.get('appId')==app_id for a in inc) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no")
+
+    if [ "$APP_INCLUDED" = "yes" ]; then
+        echo "  App $ENTRA_CLIENT_ID is already associated with the flow."
+    else
+        echo "  Associating app $ENTRA_CLIENT_ID with the existing flow..."
+        # Merge the current app into includeApplications (don't drop existing).
+        COND_BODY=$(echo "$FLOW_JSON" | python3 -c "
+import sys,json
+app_id='$ENTRA_CLIENT_ID'
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    d={}
+apps=((d.get('conditions') or {}).get('applications') or {})
+inc=apps.get('includeApplications') or []
+if not any(a.get('appId')==app_id for a in inc):
+    inc.append({'appId': app_id})
+print(json.dumps({'conditions': {'applications': {'includeApplications': inc}}}))")
+        graph_call PATCH \
+            "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows/$EXISTING_FLOW_ID" \
+            "$COND_BODY" >/dev/null; RC=$?
+        if [ $RC -ne 0 ]; then
+            echo "  ERROR: Failed to associate the app with the existing user flow."
+            exit 1
+        fi
+        echo "  App association added to the existing flow."
+    fi
 else
     FLOW_BODY=$(python3 - "$ENTRA_USER_FLOW_NAME" "$ENTRA_CLIENT_ID" <<'PY'
 import json, sys
@@ -325,16 +409,15 @@ print(json.dumps({
 PY
 )
     CREATED_FLOW=$(graph_call POST \
-        "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows" "$FLOW_BODY")
+        "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows" "$FLOW_BODY"); RC=$?
     ENTRA_USER_FLOW_ID=$(echo "$CREATED_FLOW" | json_get id)
 
-    if [ -z "$ENTRA_USER_FLOW_ID" ]; then
-        echo "  WARNING: User flow creation failed. Graph response:"
-        echo "  $CREATED_FLOW"
+    if [ $RC -ne 0 ] || [ -z "$ENTRA_USER_FLOW_ID" ]; then
+        echo "  ERROR: User flow creation failed."
         echo "  Verify the signed-in user has the 'External ID User Flow Administrator' role."
-    else
-        echo "  User flow created and associated with the app (id=$ENTRA_USER_FLOW_ID)."
+        exit 1
     fi
+    echo "  User flow created and associated with the app (id=$ENTRA_USER_FLOW_ID)."
 fi
 
 if [ -z "$ENTRA_CLIENT_ID" ] || [ -z "$ENTRA_TENANT_SUBDOMAIN" ]; then

@@ -47,6 +47,17 @@ ENTRA_TENANT_SUBDOMAIN="${ENTRA_TENANT_SUBDOMAIN:-}"
 ENTRA_TENANT_ID="${ENTRA_TENANT_ID:-}"
 ENTRA_CLIENT_ID="${ENTRA_CLIENT_ID:-}"
 ENTRA_APP_DISPLAY_NAME="${ENTRA_APP_DISPLAY_NAME:-Daily Cloud Photo (native auth)}"
+ENTRA_USER_FLOW_NAME="${ENTRA_USER_FLOW_NAME:-DailyCloudPhotoSignUpSignIn}"
+
+# External ID tenant creation (opt-in). When CREATE_TENANT=true, deploy.sh
+# provisions a new external (CIAM) tenant via Bicep. Otherwise an existing
+# tenant is used (ENTRA_TENANT_ID / ENTRA_CLIENT_ID).
+CREATE_TENANT="${CREATE_TENANT:-false}"
+TENANT_RESOURCE_NAME="${TENANT_RESOURCE_NAME:-dcp$(date +%s | tail -c 8)}"
+TENANT_DISPLAY_NAME="${TENANT_DISPLAY_NAME:-Daily Cloud Photo External ID}"
+TENANT_DATA_LOCATION="${TENANT_DATA_LOCATION:-United States}"
+TENANT_COUNTRY_CODE="${TENANT_COUNTRY_CODE:-US}"
+BICEP_TENANT="./bicep/identity_tenant.bicep"
 
 echo "=============================================="
 echo " Daily Cloud Photo — Azure Deployment (Bicep)"
@@ -76,6 +87,13 @@ fi
 
 echo "  Logged in as: $(az account show --query user.name -o tsv)"
 echo "  Subscription: $(az account show --query name -o tsv)"
+
+# Remember the subscription so we can switch back after any external-tenant
+# login (az login --tenant changes the active CLI context). SUB_ARG pins the
+# subscription on every infrastructure-side az call.
+AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-$(az account show --query id -o tsv 2>/dev/null || echo "")}"
+SUB_ARG=()
+[ -n "$AZURE_SUBSCRIPTION_ID" ] && SUB_ARG=(--subscription "$AZURE_SUBSCRIPTION_ID")
 echo ""
 
 # ============================================================
@@ -103,91 +121,230 @@ echo "  Providers ready."
 echo ""
 
 # ============================================================
-# Step 3: Configure Entra External ID (Microsoft Graph)
+# Step 3: Provision & configure Entra External ID (Bicep + Graph)
 # ============================================================
-echo "[3/7] Configuring Microsoft Entra External ID (native authentication)..."
+echo "[3/7] Provisioning & configuring Microsoft Entra External ID..."
 
-if [ -z "$ENTRA_TENANT_SUBDOMAIN" ] || [ -z "$ENTRA_TENANT_ID" ]; then
-    echo "  ERROR: ENTRA_TENANT_SUBDOMAIN and ENTRA_TENANT_ID are required."
-    echo ""
-    echo "  Creating an external tenant is not fully scriptable. Create one in"
-    echo "  the Microsoft Entra admin center (External ID), then re-run with:"
-    echo "    export ENTRA_TENANT_SUBDOMAIN=<yourtenant>"
-    echo "    export ENTRA_TENANT_ID=<tenant-guid>"
-    echo "  See azure/README.md for the full walkthrough."
+# Small helper: call Microsoft Graph with the external-tenant token.
+# Usage: graph_call <METHOD> <URL> [<json-body>]  → prints response body.
+GRAPH_TOKEN=""
+graph_call() {
+    local method="$1" url="$2" body="${3:-}"
+    if [ -n "$body" ]; then
+        curl -s -X "$method" "$url" \
+            -H "Authorization: Bearer $GRAPH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$body"
+    else
+        curl -s -X "$method" "$url" \
+            -H "Authorization: Bearer $GRAPH_TOKEN"
+    fi
+}
+
+json_get() {
+    # json_get <key> — read a top-level key from stdin JSON.
+    python3 -c "import sys,json
+try:
+    print(json.load(sys.stdin).get('$1',''))
+except Exception:
+    print('')" 2>/dev/null || echo ""
+}
+
+# ── 3a. Create the external tenant (opt-in) ──────────────────
+# ciamDirectories requires a DELEGATED user token, so it is deployed with the
+# currently signed-in user (not a managed identity). Skipped entirely when an
+# existing tenant is provided.
+if [ "$CREATE_TENANT" = "true" ] && [ -z "$ENTRA_TENANT_ID" ]; then
+    echo "  Creating external (CIAM) tenant '$TENANT_DISPLAY_NAME' ..."
+    az group create --name "$RESOURCE_GROUP" --location "$LOCATION" "${SUB_ARG[@]}" --output none
+
+    TENANT_OUTPUT=$(az deployment group create \
+        "${SUB_ARG[@]}" \
+        --resource-group "$RESOURCE_GROUP" \
+        --template-file "$BICEP_TENANT" \
+        --parameters \
+            tenantResourceName="$TENANT_RESOURCE_NAME" \
+            tenantDisplayName="$TENANT_DISPLAY_NAME" \
+            dataLocation="$TENANT_DATA_LOCATION" \
+            countryCode="$TENANT_COUNTRY_CODE" \
+        --query properties.outputs -o json 2>/dev/null || echo "")
+
+    ENTRA_TENANT_ID=$(echo "$TENANT_OUTPUT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('tenantId',{}).get('value',''))" 2>/dev/null || echo "")
+
+    if [ -z "$ENTRA_TENANT_ID" ]; then
+        echo "  ERROR: External tenant creation failed."
+        echo "  Creating ciamDirectories needs a delegated user token and"
+        echo "  subscription permissions. Ensure you ran 'az login' as a user"
+        echo "  (not a service principal) with rights to create the resource."
+        exit 1
+    fi
+    echo "  External tenant created. tenant_id=$ENTRA_TENANT_ID"
+fi
+
+if [ -z "$ENTRA_TENANT_ID" ]; then
+    echo "  ERROR: No external tenant available."
+    echo "  Either set CREATE_TENANT=true to create one, or provide an existing"
+    echo "  ENTRA_TENANT_ID (and ideally ENTRA_TENANT_SUBDOMAIN / ENTRA_CLIENT_ID)."
     exit 1
 fi
 
-configure_entra_app() {
-    # Acquire a Graph token for the *external* tenant. The signed-in account
-    # must be an administrator of that external tenant.
-    local graph_token
-    graph_token=$(az account get-access-token \
-        --tenant "$ENTRA_TENANT_ID" \
-        --resource-type ms-graph \
-        --query accessToken -o tsv 2>/dev/null || echo "")
+# ── 3b. Sign in to the external tenant for Graph (1 interactive login) ──
+# Graph operations below run against the external tenant. Acquire a token; if
+# the current session isn't signed in to that tenant, request a one-time login.
+GRAPH_TOKEN=$(az account get-access-token --tenant "$ENTRA_TENANT_ID" \
+    --resource-type ms-graph --query accessToken -o tsv 2>/dev/null || echo "")
 
-    if [ -z "$graph_token" ]; then
-        echo "  WARNING: Could not obtain a Graph token for tenant $ENTRA_TENANT_ID."
-        echo "  Run 'az login --tenant $ENTRA_TENANT_ID' first, or pass an"
-        echo "  existing ENTRA_CLIENT_ID to skip app-registration automation."
-        return 1
-    fi
+if [ -z "$GRAPH_TOKEN" ]; then
+    echo "  A one-time sign-in to the external tenant is required."
+    echo "  Launching: az login --tenant $ENTRA_TENANT_ID --allow-no-subscriptions"
+    az login --tenant "$ENTRA_TENANT_ID" --allow-no-subscriptions --only-show-errors >/dev/null
+    GRAPH_TOKEN=$(az account get-access-token --tenant "$ENTRA_TENANT_ID" \
+        --resource-type ms-graph --query accessToken -o tsv 2>/dev/null || echo "")
+fi
 
-    # Reuse an existing app registration if provided.
-    if [ -n "$ENTRA_CLIENT_ID" ]; then
-        echo "  Using existing app registration: $ENTRA_CLIENT_ID"
-        return 0
-    fi
+if [ -z "$GRAPH_TOKEN" ]; then
+    echo "  ERROR: Could not obtain a Microsoft Graph token for the external tenant."
+    echo "  Run 'az login --tenant $ENTRA_TENANT_ID --allow-no-subscriptions' and retry."
+    exit 1
+fi
 
+# Resolve the tenant subdomain from its verified onmicrosoft.com domain when
+# not explicitly provided (Native Auth base URL needs the subdomain).
+if [ -z "$ENTRA_TENANT_SUBDOMAIN" ]; then
+    DOMAINS_JSON=$(graph_call GET "https://graph.microsoft.com/v1.0/domains")
+    ENTRA_TENANT_SUBDOMAIN=$(echo "$DOMAINS_JSON" | python3 -c "
+import sys,json
+try:
+    doms=[d['id'] for d in json.load(sys.stdin).get('value',[])]
+    onms=[d for d in doms if d.endswith('.onmicrosoft.com')]
+    print(onms[0].split('.onmicrosoft.com')[0] if onms else '')
+except Exception:
+    print('')" 2>/dev/null || echo "")
+    [ -n "$ENTRA_TENANT_SUBDOMAIN" ] && echo "  Resolved tenant subdomain: $ENTRA_TENANT_SUBDOMAIN"
+fi
+
+# ── 3c. App registration (public client + native authentication) ──
+if [ -n "$ENTRA_CLIENT_ID" ]; then
+    echo "  Using existing app registration: $ENTRA_CLIENT_ID"
+    ENTRA_APP_OBJECT_ID=$(graph_call GET \
+        "https://graph.microsoft.com/v1.0/applications(appId='$ENTRA_CLIENT_ID')" | json_get id)
+else
     echo "  Creating app registration '$ENTRA_APP_DISPLAY_NAME' ..."
-    # Public client + native auth: enable public client flows and the native
-    # auth "redirect" reply. isFallbackPublicClient=true marks it public.
-    local body
-    body=$(python3 - "$ENTRA_APP_DISPLAY_NAME" <<'PY'
+    # Public client (isFallbackPublicClient) + native auth enabled. The
+    # nativeAuthenticationApisEnabled flag turns on the native-auth API.
+    APP_BODY=$(python3 - "$ENTRA_APP_DISPLAY_NAME" <<'PY'
 import json, sys
 print(json.dumps({
     "displayName": sys.argv[1],
-    "signInAudience": "AzureADandPersonalMicrosoftAccount",
+    "signInAudience": "AzureADMyOrg",
     "isFallbackPublicClient": True,
     "publicClient": {"redirectUris": ["https://login.microsoftonline.com/common/oauth2/nativeclient"]},
+    "nativeAuthenticationApisEnabled": "all",
 }))
 PY
 )
-    local created
-    created=$(curl -s -X POST "https://graph.microsoft.com/v1.0/applications" \
-        -H "Authorization: Bearer $graph_token" \
-        -H "Content-Type: application/json" \
-        -d "$body")
-
-    ENTRA_CLIENT_ID=$(echo "$created" | python3 -c "import sys,json;print(json.load(sys.stdin).get('appId',''))" 2>/dev/null || echo "")
+    CREATED_APP=$(graph_call POST "https://graph.microsoft.com/v1.0/applications" "$APP_BODY")
+    ENTRA_CLIENT_ID=$(echo "$CREATED_APP" | json_get appId)
+    ENTRA_APP_OBJECT_ID=$(echo "$CREATED_APP" | json_get id)
 
     if [ -z "$ENTRA_CLIENT_ID" ]; then
-        echo "  WARNING: App registration failed. Graph response:"
-        echo "  $created"
-        echo ""
-        echo "  Native authentication also requires enabling the native-auth API"
-        echo "  and associating a user flow — these steps are portal-driven."
-        echo "  Create the app registration + user flow manually (see README),"
-        echo "  then re-run with ENTRA_CLIENT_ID set."
-        return 1
+        echo "  ERROR: App registration failed. Graph response:"
+        echo "  $CREATED_APP"
+        exit 1
     fi
-
     echo "  App registration created. client_id=$ENTRA_CLIENT_ID"
-    echo ""
-    echo "  NOTE: In the Entra admin center, finish these portal-only steps:"
-    echo "    - Enable public client and native authentication flows on the app"
-    echo "    - Create an email + password user flow (with email OTP + SSPR)"
-    echo "    - Associate this app registration with the user flow"
-    return 0
-}
+fi
 
-configure_entra_app || echo "  Continuing; verify Entra setup before testing auth."
+# Ensure native authentication is enabled on the app (idempotent for reuse).
+if [ -n "$ENTRA_APP_OBJECT_ID" ]; then
+    graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
+        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null || true
+fi
 
-if [ -z "$ENTRA_CLIENT_ID" ]; then
-    echo "  ERROR: No ENTRA_CLIENT_ID available. Cannot configure the backend."
-    echo "  Set ENTRA_CLIENT_ID and re-run."
+# ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
+# Email one-time passcode must be enabled tenant-wide so native credential
+# recovery (self-service password reset) works. Idempotent PATCH.
+echo "  Enabling Email OTP authentication method (SSPR prerequisite)..."
+graph_call PATCH \
+    "https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/email" \
+    '{"@odata.type":"#microsoft.graph.emailAuthenticationMethodConfiguration","state":"enabled","allowExternalIdToUseEmailOtp":"enabled"}' >/dev/null || \
+    echo "  WARNING: Could not enable Email OTP policy; SSPR may not work until enabled."
+
+# ── 3e. Sign-up/sign-in user flow (Email+Password) + app association ──
+# Create the user flow only if one with our name doesn't already exist.
+echo "  Configuring sign-up/sign-in user flow '$ENTRA_USER_FLOW_NAME'..."
+FLOWS_JSON=$(graph_call GET \
+    "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows?\$select=id,displayName")
+EXISTING_FLOW_ID=$(echo "$FLOWS_JSON" | python3 -c "
+import sys,json
+name='$ENTRA_USER_FLOW_NAME'
+try:
+    for f in json.load(sys.stdin).get('value',[]):
+        if f.get('displayName')==name:
+            print(f.get('id','')); break
+except Exception:
+    pass" 2>/dev/null || echo "")
+
+if [ -n "$EXISTING_FLOW_ID" ]; then
+    echo "  Reusing existing user flow (id=$EXISTING_FLOW_ID)."
+    ENTRA_USER_FLOW_ID="$EXISTING_FLOW_ID"
+else
+    FLOW_BODY=$(python3 - "$ENTRA_USER_FLOW_NAME" "$ENTRA_CLIENT_ID" <<'PY'
+import json, sys
+name, app_id = sys.argv[1], sys.argv[2]
+print(json.dumps({
+    "@odata.type": "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow",
+    "displayName": name,
+    "conditions": {"applications": {"includeApplications": [{"appId": app_id}]}},
+    "onInteractiveAuthFlowStart": {
+        "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",
+        "isSignUpAllowed": True,
+    },
+    "onAuthenticationMethodLoadStart": {
+        "@odata.type": "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp",
+        "identityProviders": [{"id": "EmailPassword-OAUTH"}],
+    },
+    "onAttributeCollection": {
+        "@odata.type": "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp",
+        "attributes": [
+            {"id": "email", "displayName": "Email Address", "description": "Email address of the user",
+             "userFlowAttributeType": "builtIn", "dataType": "string"},
+            {"id": "displayName", "displayName": "Display Name", "description": "Display Name of the User.",
+             "userFlowAttributeType": "builtIn", "dataType": "string"},
+        ],
+        "attributeCollectionPage": {"views": [{"inputs": [
+            {"attribute": "email", "label": "Email Address", "inputType": "text", "hidden": True,
+             "editable": False, "writeToDirectory": True, "required": True,
+             "validationRegEx": "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$"},
+            {"attribute": "displayName", "label": "Display Name", "inputType": "text", "hidden": False,
+             "editable": True, "writeToDirectory": True, "required": False,
+             "validationRegEx": "^[a-zA-Z_][0-9a-zA-Z_ ]*[0-9a-zA-Z_]+$"},
+        ]}]},
+    },
+}))
+PY
+)
+    CREATED_FLOW=$(graph_call POST \
+        "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows" "$FLOW_BODY")
+    ENTRA_USER_FLOW_ID=$(echo "$CREATED_FLOW" | json_get id)
+
+    if [ -z "$ENTRA_USER_FLOW_ID" ]; then
+        echo "  WARNING: User flow creation failed. Graph response:"
+        echo "  $CREATED_FLOW"
+        echo "  Verify the signed-in user has the 'External ID User Flow Administrator' role."
+    else
+        echo "  User flow created and associated with the app (id=$ENTRA_USER_FLOW_ID)."
+    fi
+fi
+
+if [ -z "$ENTRA_CLIENT_ID" ] || [ -z "$ENTRA_TENANT_SUBDOMAIN" ]; then
+    echo "  ERROR: Missing ENTRA_CLIENT_ID or ENTRA_TENANT_SUBDOMAIN after setup."
     exit 1
+fi
+
+# Switch the active CLI context back to the subscription for infra deployment.
+if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then
+    az account set --subscription "$AZURE_SUBSCRIPTION_ID" --only-show-errors 2>/dev/null || true
 fi
 echo ""
 
@@ -196,9 +353,12 @@ echo ""
 # ============================================================
 echo "[4/7] Creating resource group and deploying Bicep..."
 
-az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+# SUB_ARG (defined in Step 1) pins the subscription: an external-tenant login
+# in Step 3 may have changed the active CLI context.
+az group create --name "$RESOURCE_GROUP" --location "$LOCATION" "${SUB_ARG[@]}" --output none
 
 DEPLOYMENT_OUTPUT=$(az deployment group create \
+    "${SUB_ARG[@]}" \
     --resource-group "$RESOURCE_GROUP" \
     --template-file "$BICEP_MAIN" \
     --parameters \
@@ -242,6 +402,7 @@ DEPLOY_ZIP="$(mktemp -d)/app.zip"
 # storage container configured in the Bicep functionAppConfig. This is not the
 # legacy content-share config-zip flow.
 az functionapp deploy \
+    "${SUB_ARG[@]}" \
     --resource-group "$RESOURCE_GROUP" \
     --name "$FUNCTION_APP_NAME" \
     --src-path "$DEPLOY_ZIP" \
@@ -260,7 +421,7 @@ echo "[6/7] Wiring Event Grid blob trigger..."
 
 BLOB_KEY=""
 for _ in $(seq 1 12); do
-    BLOB_KEY=$(az functionapp keys list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" \
+    BLOB_KEY=$(az functionapp keys list "${SUB_ARG[@]}" --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" \
         --query "systemKeys.eventgrid_extension" -o tsv 2>/dev/null || echo "")
     if [ -n "$BLOB_KEY" ] && [ "$BLOB_KEY" != "null" ]; then break; fi
     BLOB_KEY=""
@@ -272,13 +433,14 @@ if [ -z "$BLOB_KEY" ]; then
     echo "  subscription manually (see README). Thumbnails will not generate yet."
 else
     ENDPOINT_URL="https://${FUNCTION_APP_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_photo&code=${BLOB_KEY}"
-    STORAGE_ID=$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
+    STORAGE_ID=$(az storage account show "${SUB_ARG[@]}" --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query id -o tsv)
 
     az eventgrid event-subscription delete \
         --name photo-upload-trigger --source-resource-id "$STORAGE_ID" \
         --output none 2>/dev/null || true
 
     az eventgrid event-subscription create \
+        "${SUB_ARG[@]}" \
         --name photo-upload-trigger \
         --source-resource-id "$STORAGE_ID" \
         --endpoint "$ENDPOINT_URL" \

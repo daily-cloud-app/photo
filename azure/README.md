@@ -16,53 +16,77 @@ The backend never stores passwords, password hashes, reset codes or
 verification codes, and never issues its own JWTs. Infrastructure is defined in
 **Bicep** and runs on the **Flex Consumption** plan.
 
-### Prerequisites: Entra External ID tenant
+### What `deploy.sh` automates
 
-Creating an external tenant and its user flow is portal-driven and cannot be
-fully scripted. Do this once before deploying:
+`deploy.sh` provisions and configures everything, including the External ID
+tenant and its user flow. No manual portal steps are required for a standard
+setup. It performs:
 
-1. In the [Microsoft Entra admin center](https://entra.microsoft.com), create an
-   **external** tenant. Note its **subdomain** (e.g. `contoso` for
-   `contoso.onmicrosoft.com`) and **tenant (directory) ID**.
-2. Register an application (or let `deploy.sh` create it via Graph). On the app:
-   - Enable **public client and native authentication flows**.
-   - Grant admin consent.
-3. Create an **Email + Password** user flow with **email one-time passcode**
-   verification, and enable **self-service password reset (SSPR)**.
-4. **Associate** the app registration with the user flow.
+- **External ID tenant** creation via Bicep (`ciamDirectories`) — opt-in with
+  `CREATE_TENANT=true`. Reuse an existing tenant instead by passing
+  `ENTRA_TENANT_ID`.
+- **App registration** (public client + native authentication) via Microsoft Graph.
+- **Email OTP** authentication method enabled tenant-wide (required for SSPR).
+- **Sign-up/sign-in user flow** (Email + Password) created via Graph and
+  **associated with the app** — no portal step.
+- **Infrastructure** (Storage, Cosmos DB, managed identity, Flex Consumption
+  Function App) via Bicep, then the function code via **OneDeploy**.
 
-`deploy.sh` automates the app registration via Microsoft Graph. The user flow
-creation and association remain manual (portal-only) at this time.
+> [!NOTE]
+> The `ciamDirectories` resource type is preview-only and requires a **delegated
+> user sign-in** (a managed identity or service principal cannot create it).
+> Creating the tenant and configuring it on a different tenant may require **up
+> to two interactive `az login` prompts**. You need permission to create the
+> resource in your subscription, plus the **External ID User Flow Administrator**
+> and **Authentication Policy Administrator** roles (or higher) on the external
+> tenant.
+
+### Prerequisites
+
+- Azure CLI (`az`) signed in as a **user** (not a service principal).
+- `zip`, `curl`, `python3` (pre-installed in Cloud Shell).
+- A subscription in which resources (including the CIAM directory) can be created.
 
 ### Quick Start
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
 
 1. Click the **Cloud Shell** button above.
-2. Clone, configure your external tenant, and deploy:
+2. Clone and deploy. Choose one of the two modes below.
+
+   **A) Create a brand-new External ID tenant (fully automated):**
    ```bash
    [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
    cd photo && git checkout -- . && git pull --ff-only && cd azure
 
-   # Point the backend at your external tenant.
-   export ENTRA_TENANT_SUBDOMAIN=<yourtenant>
-   export ENTRA_TENANT_ID=<tenant-guid>
-   # Optional: reuse an existing app registration instead of creating one.
-   # export ENTRA_CLIENT_ID=<app-client-id>
-
+   export CREATE_TENANT=true          # provision a new external tenant
    # Optional overrides (defaults shown):
    export RESOURCE_GROUP=daily-cloud-photo-rg
-   export LOCATION=eastus          # must be a Flex Consumption region
+   export LOCATION=eastus             # must be a Flex Consumption region
    export APP_NAME=dailycloudphoto
 
    chmod +x deploy.sh && ./deploy.sh
    ```
-3. Copy the API endpoint URL from the output into the app.
 
-`deploy.sh` is a thin wrapper: **Bicep** provisions the infrastructure,
-**Microsoft Graph** configures the app registration, and **OneDeploy** publishes
-the code to the Flex Consumption deployment container (no legacy
-`config-zip` content-share flow).
+   **B) Use an existing External ID tenant:**
+   ```bash
+   [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
+   cd photo && git checkout -- . && git pull --ff-only && cd azure
+
+   export ENTRA_TENANT_ID=<tenant-guid>
+   # Optional: skip tenant subdomain lookup / app creation by providing them.
+   # export ENTRA_TENANT_SUBDOMAIN=<yourtenant>
+   # export ENTRA_CLIENT_ID=<app-client-id>
+
+   chmod +x deploy.sh && ./deploy.sh
+   ```
+3. When prompted, complete the one-time interactive sign-in to the external
+   tenant, then copy the API endpoint URL from the output into the app.
+
+`deploy.sh` is a thin wrapper: **Bicep** provisions the tenant and
+infrastructure, **Microsoft Graph** configures the app registration, Email OTP
+policy and user flow, and **OneDeploy** publishes the code to the Flex
+Consumption deployment container (no legacy `config-zip` content-share flow).
 
 ### Configuration
 
@@ -71,9 +95,14 @@ and Bicep parameters (`bicep/main.bicepparam`).
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ENTRA_TENANT_SUBDOMAIN` | (required) | External tenant subdomain |
-| `ENTRA_TENANT_ID` | (required) | External tenant (directory) GUID |
+| `CREATE_TENANT` | `false` | Set `true` to create a new External ID tenant |
+| `ENTRA_TENANT_ID` | (auto/created) | Existing external tenant GUID; skips tenant creation when set |
+| `ENTRA_TENANT_SUBDOMAIN` | (auto-resolved) | External tenant subdomain; resolved from the tenant when omitted |
 | `ENTRA_CLIENT_ID` | (auto-created) | App registration client ID; set to reuse |
+| `TENANT_DISPLAY_NAME` | `Daily Cloud Photo External ID` | New tenant display name (when creating) |
+| `TENANT_DATA_LOCATION` | `United States` | New tenant data residency location |
+| `TENANT_COUNTRY_CODE` | `US` | New tenant country code |
+| `ENTRA_USER_FLOW_NAME` | `DailyCloudPhotoSignUpSignIn` | Sign-up/sign-in user flow name |
 | `RESOURCE_GROUP` | `daily-cloud-photo-rg` | Target resource group |
 | `LOCATION` | `eastus` | Azure region (Flex Consumption) |
 | `APP_NAME` | `dailycloudphoto` | Base name for all resources |
@@ -92,13 +121,18 @@ and Bicep parameters (`bicep/main.bicepparam`).
 
 ```
 ./deploy.sh
-   ├─ Bicep deploy (bicep/main.bicep)
+   ├─ [CREATE_TENANT=true] Bicep deploy (bicep/identity_tenant.bicep)
+   │     └─ External ID (CIAM) tenant   ← delegated user token
+   ├─ One-time interactive sign-in to the external tenant (if needed)
+   ├─ Microsoft Graph (external tenant)
+   │     ├─ App registration (public client + native auth enabled)
+   │     ├─ Email OTP authentication method (SSPR prerequisite)
+   │     └─ Sign-up/sign-in user flow (Email+Password) + app association
+   ├─ Bicep deploy (bicep/main.bicep)   ← subscription context
    │     ├─ Managed Identity + least-privilege RBAC
    │     ├─ Storage (photos + deployment container)
    │     ├─ Cosmos DB (users mapping + photos)
    │     └─ Flex Consumption Function App + App Insights
-   ├─ Microsoft Graph
-   │     └─ App registration (public client / native auth)
    ├─ OneDeploy (function code, remote build)
    └─ Event Grid subscription (thumbnail trigger) → API endpoint
 ```
@@ -199,52 +233,73 @@ and apply additional measures as needed.
 確認コードを一切保存せず、独自 JWT も発行しません。インフラは **Bicep** で定義し、
 **Flex Consumption** プランで動作します。
 
-### 前提: Entra External ID テナント
+### `deploy.sh` が自動化する範囲
 
-外部テナントとユーザーフローの作成はポータル操作が必要で、完全な自動化はできません。
-デプロイ前に一度だけ以下を行ってください。
+`deploy.sh` は External ID テナントとユーザーフローを含め、すべてを自動で構築・設定
+します。標準的なセットアップではポータルでの手動作業は不要です。実行内容:
 
-1. [Microsoft Entra 管理センター](https://entra.microsoft.com) で **外部**テナントを作成。
-   **サブドメイン**（例: `contoso.onmicrosoft.com` なら `contoso`）と
-   **テナント（ディレクトリ）ID** を控える。
-2. アプリを登録（`deploy.sh` が Graph 経由で作成可）。アプリで:
-   - **パブリッククライアントとネイティブ認証フロー**を有効化。
-   - 管理者の同意を付与。
-3. **メール + パスワード**のユーザーフローを作成し、**メール OTP** 確認と
-   **セルフサービスパスワードリセット（SSPR）**を有効化。
-4. アプリ登録をユーザーフローに **関連付け**る。
+- **External ID テナント**作成（Bicep `ciamDirectories`）: `CREATE_TENANT=true` で
+  オプトイン。既存テナントを使う場合は `ENTRA_TENANT_ID` を指定してスキップ。
+- **アプリ登録**（パブリッククライアント + ネイティブ認証）を Microsoft Graph で作成。
+- **メール OTP** 認証メソッドをテナント全体で有効化（SSPR の前提）。
+- **サインアップ/サインイン ユーザーフロー**（メール + パスワード）を Graph で作成し、
+  **アプリに関連付け**（ポータル操作なし）。
+- **インフラ**（Storage・Cosmos DB・マネージド ID・Flex Consumption Function App）を
+  Bicep で構築し、関数コードを **OneDeploy** で公開。
 
-`deploy.sh` はアプリ登録を Microsoft Graph で自動化します。ユーザーフローの作成と
-関連付けは現状ポータル操作（手動）です。
+> [!NOTE]
+> `ciamDirectories` リソースはプレビュー版で、作成には**ユーザーの委任サインイン**が
+> 必要です（マネージド ID・サービスプリンシパルでは作成不可）。テナント作成と、別
+> テナント上での設定のため、**対話ログインが最大2回**必要になる場合があります。
+> サブスクリプションでのリソース作成権限に加え、外部テナント側で **External ID User
+> Flow Administrator** と **Authentication Policy Administrator** ロール（以上）が必要です。
+
+### 前提
+
+- Azure CLI (`az`) に**ユーザー**としてサインイン済み（サービスプリンシパル不可）。
+- `zip`・`curl`・`python3`（Cloud Shell にプリインストール済み）。
+- CIAM ディレクトリを含むリソースを作成できるサブスクリプション。
 
 ### クイックスタート
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
 
 1. 上記の **Cloud Shell** ボタンをクリック。
-2. クローンし、外部テナントを設定してデプロイ:
+2. クローンしてデプロイ。以下の2モードから選択します。
+
+   **A) External ID テナントを新規作成（完全自動）:**
    ```bash
    [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
    cd photo && git checkout -- . && git pull --ff-only && cd azure
 
-   # バックエンドを外部テナントに向ける
-   export ENTRA_TENANT_SUBDOMAIN=<yourtenant>
-   export ENTRA_TENANT_ID=<tenant-guid>
-   # 任意: 既存のアプリ登録を再利用する場合
-   # export ENTRA_CLIENT_ID=<app-client-id>
-
+   export CREATE_TENANT=true          # 外部テナントを新規作成
    # 任意の上書き（デフォルト値）:
    export RESOURCE_GROUP=daily-cloud-photo-rg
-   export LOCATION=eastus          # Flex Consumption 対応リージョン
+   export LOCATION=eastus             # Flex Consumption 対応リージョン
    export APP_NAME=dailycloudphoto
 
    chmod +x deploy.sh && ./deploy.sh
    ```
-3. 出力された API エンドポイント URL をアプリに入力。
 
-`deploy.sh` はラッパーです。**Bicep** がインフラを構築し、**Microsoft Graph** が
-アプリ登録を設定し、**OneDeploy** が Flex Consumption のデプロイコンテナへコードを
-公開します（従来の `config-zip` コンテンツ共有方式には依存しません）。
+   **B) 既存の External ID テナントを使用:**
+   ```bash
+   [ -d photo ] || git clone https://github.com/daily-cloud-app/photo.git
+   cd photo && git checkout -- . && git pull --ff-only && cd azure
+
+   export ENTRA_TENANT_ID=<tenant-guid>
+   # 任意: サブドメイン解決やアプリ作成を省略する場合は指定
+   # export ENTRA_TENANT_SUBDOMAIN=<yourtenant>
+   # export ENTRA_CLIENT_ID=<app-client-id>
+
+   chmod +x deploy.sh && ./deploy.sh
+   ```
+3. 途中で外部テナントへの1回きりの対話サインインを求められたら完了させ、出力された
+   API エンドポイント URL をアプリに入力。
+
+`deploy.sh` はラッパーです。**Bicep** がテナントとインフラを構築し、**Microsoft Graph**
+がアプリ登録・メール OTP ポリシー・ユーザーフローを設定し、**OneDeploy** が Flex
+Consumption のデプロイコンテナへコードを公開します（従来の `config-zip` コンテンツ
+共有方式には依存しません）。
 
 ### 設定
 
@@ -253,9 +308,14 @@ and apply additional measures as needed.
 
 | 設定 | デフォルト | 説明 |
 |------|-----------|------|
-| `ENTRA_TENANT_SUBDOMAIN` | (必須) | 外部テナントのサブドメイン |
-| `ENTRA_TENANT_ID` | (必須) | 外部テナント（ディレクトリ）GUID |
+| `CREATE_TENANT` | `false` | `true` で External ID テナントを新規作成 |
+| `ENTRA_TENANT_ID` | (自動/作成) | 既存外部テナント GUID。指定時はテナント作成をスキップ |
+| `ENTRA_TENANT_SUBDOMAIN` | (自動解決) | 外部テナントのサブドメイン。未指定ならテナントから解決 |
 | `ENTRA_CLIENT_ID` | (自動作成) | アプリ登録のクライアント ID。再利用時に指定 |
+| `TENANT_DISPLAY_NAME` | `Daily Cloud Photo External ID` | 新規テナントの表示名（作成時） |
+| `TENANT_DATA_LOCATION` | `United States` | 新規テナントのデータ所在地 |
+| `TENANT_COUNTRY_CODE` | `US` | 新規テナントの国コード |
+| `ENTRA_USER_FLOW_NAME` | `DailyCloudPhotoSignUpSignIn` | サインアップ/サインイン ユーザーフロー名 |
 | `RESOURCE_GROUP` | `daily-cloud-photo-rg` | 対象リソースグループ |
 | `LOCATION` | `eastus` | Azure リージョン（Flex Consumption） |
 | `APP_NAME` | `dailycloudphoto` | リソース名のベース |
@@ -274,13 +334,18 @@ and apply additional measures as needed.
 
 ```
 ./deploy.sh
-   ├─ Bicep デプロイ (bicep/main.bicep)
+   ├─ [CREATE_TENANT=true] Bicep デプロイ (bicep/identity_tenant.bicep)
+   │     └─ External ID (CIAM) テナント   ← ユーザー委任トークン
+   ├─ 外部テナントへの1回きりの対話サインイン（必要な場合）
+   ├─ Microsoft Graph（外部テナント）
+   │     ├─ アプリ登録（パブリッククライアント + ネイティブ認証有効化）
+   │     ├─ メール OTP 認証メソッド（SSPR の前提）
+   │     └─ サインアップ/サインイン ユーザーフロー（メール+パスワード）+ アプリ関連付け
+   ├─ Bicep デプロイ (bicep/main.bicep)   ← サブスクリプション文脈
    │     ├─ マネージド ID + 最小権限 RBAC
    │     ├─ Storage（photos + デプロイ用コンテナ）
    │     ├─ Cosmos DB（users マッピング + photos）
    │     └─ Flex Consumption Function App + App Insights
-   ├─ Microsoft Graph
-   │     └─ アプリ登録（パブリッククライアント / ネイティブ認証）
    ├─ OneDeploy（関数コード、リモートビルド）
    └─ Event Grid サブスクリプション（サムネイル生成）→ API エンドポイント
 ```

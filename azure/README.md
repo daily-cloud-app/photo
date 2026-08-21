@@ -32,20 +32,30 @@ setup. It performs:
 - **Infrastructure** (Storage, Cosmos DB, managed identity, Flex Consumption
   Function App) via Bicep, then the function code via **OneDeploy**.
 
+The Email OTP policy and user flow require Graph scopes that the Azure CLI's
+first-party token does not carry. To handle this, `deploy.sh` provisions a
+**temporary Graph automation app** with application permissions
+(`Policy.ReadWrite.AuthenticationMethod`, `EventListener.ReadWrite.All`,
+`Application.ReadWrite.All`), grants admin consent, uses its client-credentials
+token for those calls, and **deletes the app** at the end of Step 3 (no standing
+credential is left behind).
+
 > [!NOTE]
 > The `ciamDirectories` resource type is preview-only and requires a **delegated
 > user sign-in** (a managed identity or service principal cannot create it).
 > Creating the tenant and configuring it on a different tenant may require **up
-> to two interactive `az login` prompts**. You need permission to create the
-> resource in your subscription, plus the **External ID User Flow Administrator**
-> and **Authentication Policy Administrator** roles (or higher) on the external
-> tenant.
+> to two interactive `az login` prompts**. The signed-in user must be able to
+> create the resource in the subscription and must be a **Global Administrator**
+> (or hold Privileged Role Administrator + Application Administrator) on the
+> external tenant, since the script creates an app and grants admin consent there.
 
 ### Prerequisites
 
 - Azure CLI (`az`) signed in as a **user** (not a service principal).
 - `zip`, `curl`, `python3` (pre-installed in Cloud Shell).
 - A subscription in which resources (including the CIAM directory) can be created.
+- **Global Administrator** on the external tenant (needed to grant admin consent
+  to the temporary Graph automation app).
 
 ### Quick Start
 
@@ -247,18 +257,27 @@ and apply additional measures as needed.
 - **インフラ**（Storage・Cosmos DB・マネージド ID・Flex Consumption Function App）を
   Bicep で構築し、関数コードを **OneDeploy** で公開。
 
+メール OTP ポリシーとユーザーフローの設定には、Azure CLI の第一者トークンが持たない
+Graph スコープが必要です。そのため `deploy.sh` は**一時的な Graph 自動化アプリ**を
+アプリケーション権限（`Policy.ReadWrite.AuthenticationMethod`・
+`EventListener.ReadWrite.All`・`Application.ReadWrite.All`）付きで作成し、管理者同意を
+付与、そのクライアント資格情報トークンで上記を実行し、**Step 3 の最後にアプリを削除**
+します（資格情報は残しません）。
+
 > [!NOTE]
 > `ciamDirectories` リソースはプレビュー版で、作成には**ユーザーの委任サインイン**が
 > 必要です（マネージド ID・サービスプリンシパルでは作成不可）。テナント作成と、別
 > テナント上での設定のため、**対話ログインが最大2回**必要になる場合があります。
-> サブスクリプションでのリソース作成権限に加え、外部テナント側で **External ID User
-> Flow Administrator** と **Authentication Policy Administrator** ロール（以上）が必要です。
+> サインインユーザーはサブスクリプションでリソースを作成でき、かつ外部テナントで
+> **グローバル管理者**（または特権ロール管理者 + アプリケーション管理者）である必要が
+> あります（スクリプトがアプリを作成し管理者同意を付与するため）。
 
 ### 前提
 
 - Azure CLI (`az`) に**ユーザー**としてサインイン済み（サービスプリンシパル不可）。
 - `zip`・`curl`・`python3`（Cloud Shell にプリインストール済み）。
 - CIAM ディレクトリを含むリソースを作成できるサブスクリプション。
+- 外部テナントの**グローバル管理者**（一時 Graph 自動化アプリへの管理者同意付与に必要）。
 
 ### クイックスタート
 

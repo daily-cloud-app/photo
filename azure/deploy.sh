@@ -240,6 +240,102 @@ except Exception:
     [ -n "$ENTRA_TENANT_SUBDOMAIN" ] && echo "  Resolved tenant subdomain: $ENTRA_TENANT_SUBDOMAIN"
 fi
 
+# ── 3b2. Graph automation app (application permissions) ──────
+# The Azure CLI first-party token lacks the high-privilege delegated scopes
+# (Policy.ReadWrite.AuthenticationMethod, EventListener.ReadWrite.All) required
+# to configure the Email OTP policy and user flows — even for a Global Admin.
+# So we provision a short-lived dedicated app with those APPLICATION permissions,
+# grant admin consent, and use its client-credentials token for the Graph calls
+# below. The app is deleted at the end of Step 3.
+GRAPH_MSGRAPH_APPID="00000003-0000-0000-c000-000000000000"
+GRAPH_AUTOMATION_APPID=""
+GRAPH_AUTOMATION_OBJECT_ID=""
+
+echo "  Provisioning temporary Graph automation app (application permissions)..."
+AUTO_APP=$(az ad app create --display-name "DCP Graph Automation (temp)" \
+    --sign-in-audience AzureADMyOrg -o json 2>/dev/null || echo "")
+GRAPH_AUTOMATION_APPID=$(echo "$AUTO_APP" | json_get appId)
+GRAPH_AUTOMATION_OBJECT_ID=$(echo "$AUTO_APP" | json_get id)
+
+if [ -z "$GRAPH_AUTOMATION_APPID" ]; then
+    echo "  ERROR: Could not create the Graph automation app."
+    exit 1
+fi
+
+az ad sp create --id "$GRAPH_AUTOMATION_APPID" >/dev/null 2>&1 || true
+AUTO_SPID=$(az ad sp show --id "$GRAPH_AUTOMATION_APPID" --query id -o tsv 2>/dev/null || echo "")
+GRAPH_SP_ID=$(az ad sp show --id "$GRAPH_MSGRAPH_APPID" --query id -o tsv)
+
+# Resolve the app-role (application permission) ids from the Graph SP.
+role_id() { az ad sp show --id "$GRAPH_MSGRAPH_APPID" --query "appRoles[?value=='$1'].id | [0]" -o tsv; }
+ROLE_POLICY=$(role_id "Policy.ReadWrite.AuthenticationMethod")
+ROLE_FLOW=$(role_id "EventListener.ReadWrite.All")
+ROLE_APP=$(role_id "Application.ReadWrite.All")
+
+# Grant admin consent by assigning the app roles to the automation SP.
+grant_role() {
+    az rest --method POST \
+        --url "https://graph.microsoft.com/v1.0/servicePrincipals/$AUTO_SPID/appRoleAssignments" \
+        --headers "Content-Type=application/json" \
+        --body "{\"principalId\":\"$AUTO_SPID\",\"resourceId\":\"$GRAPH_SP_ID\",\"appRoleId\":\"$1\"}" \
+        --only-show-errors >/dev/null 2>&1 || true
+}
+grant_role "$ROLE_POLICY"
+grant_role "$ROLE_FLOW"
+grant_role "$ROLE_APP"
+
+# Short-lived client secret for the client-credentials grant.
+AUTO_SECRET=$(az ad app credential reset --id "$GRAPH_AUTOMATION_APPID" --append \
+    --query password -o tsv --only-show-errors 2>/dev/null || echo "")
+if [ -z "$AUTO_SECRET" ]; then
+    echo "  ERROR: Could not create a client secret for the automation app."
+    exit 1
+fi
+
+# Delete the automation app on exit (best effort), so no standing credential
+# is left behind after deployment.
+cleanup_graph_app() {
+    [ -n "$GRAPH_AUTOMATION_OBJECT_ID" ] && \
+        az ad app delete --id "$GRAPH_AUTOMATION_OBJECT_ID" --only-show-errors 2>/dev/null || true
+}
+trap cleanup_graph_app EXIT
+
+# Acquire the client-credentials token (retry until consent propagates).
+echo "  Waiting for admin consent to propagate..."
+GRAPH_TOKEN=""
+for _ in $(seq 1 12); do
+    sleep 10
+    GRAPH_TOKEN=$(curl -s -X POST \
+        "https://login.microsoftonline.com/$ENTRA_TENANT_ID/oauth2/v2.0/token" \
+        -d "client_id=$GRAPH_AUTOMATION_APPID" \
+        -d "scope=https://graph.microsoft.com/.default" \
+        -d "client_secret=$AUTO_SECRET" \
+        -d "grant_type=client_credentials" \
+        | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
+    # Verify the token actually carries the required app roles before using it.
+    if [ -n "$GRAPH_TOKEN" ]; then
+        HAS_ROLE=$(echo "$GRAPH_TOKEN" | cut -d. -f2 | tr '_-' '/+' | \
+            python3 -c "
+import sys,base64,json
+s=sys.stdin.read().strip()
+s+='='*(-len(s)%4)
+try:
+    d=json.loads(base64.b64decode(s))
+    print('yes' if 'Policy.ReadWrite.AuthenticationMethod' in (d.get('roles') or []) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no")
+        [ "$HAS_ROLE" = "yes" ] && break
+        GRAPH_TOKEN=""
+    fi
+done
+
+if [ -z "$GRAPH_TOKEN" ]; then
+    echo "  ERROR: Could not obtain an app token with the required Graph roles."
+    echo "  Admin consent may not have propagated. Re-run in a minute."
+    exit 1
+fi
+echo "  Graph automation token ready."
+
 # ── 3c. App registration (public client + native authentication) ──
 if [ -n "$ENTRA_CLIENT_ID" ]; then
     echo "  Using existing app registration: $ENTRA_CLIENT_ID"
@@ -278,9 +374,8 @@ fi
 # Ensure native authentication is enabled on the app (idempotent for reuse).
 # This is required for the native-auth API to work, so fail loudly on error.
 if [ -n "$ENTRA_APP_OBJECT_ID" ]; then
-    graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
-        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null; RC=$?
-    if [ $RC -ne 0 ]; then
+    if ! graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
+        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null; then
         echo "  ERROR: Failed to enable native authentication on the app."
         exit 1
     fi
@@ -293,12 +388,11 @@ fi
 # Email one-time passcode must be enabled tenant-wide so native credential
 # recovery (self-service password reset) works. Idempotent PATCH.
 echo "  Enabling Email OTP authentication method (SSPR prerequisite)..."
-graph_call PATCH \
+if ! graph_call PATCH \
     "https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/email" \
-    '{"@odata.type":"#microsoft.graph.emailAuthenticationMethodConfiguration","state":"enabled","allowExternalIdToUseEmailOtp":"enabled"}' >/dev/null; RC=$?
-if [ $RC -ne 0 ]; then
+    '{"@odata.type":"#microsoft.graph.emailAuthenticationMethodConfiguration","state":"enabled","allowExternalIdToUseEmailOtp":"enabled"}' >/dev/null; then
     echo "  ERROR: Failed to enable the Email OTP policy (SSPR prerequisite)."
-    echo "  Ensure the signed-in user has the 'Authentication Policy Administrator' role."
+    echo "  The automation app needs the 'Policy.ReadWrite.AuthenticationMethod' application permission."
     exit 1
 fi
 
@@ -363,10 +457,9 @@ inc=apps.get('includeApplications') or []
 if not any(a.get('appId')==app_id for a in inc):
     inc.append({'appId': app_id})
 print(json.dumps({'conditions': {'applications': {'includeApplications': inc}}}))")
-        graph_call PATCH \
+        if ! graph_call PATCH \
             "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows/$EXISTING_FLOW_ID" \
-            "$COND_BODY" >/dev/null; RC=$?
-        if [ $RC -ne 0 ]; then
+            "$COND_BODY" >/dev/null; then
             echo "  ERROR: Failed to associate the app with the existing user flow."
             exit 1
         fi
@@ -424,6 +517,14 @@ if [ -z "$ENTRA_CLIENT_ID" ] || [ -z "$ENTRA_TENANT_SUBDOMAIN" ]; then
     echo "  ERROR: Missing ENTRA_CLIENT_ID or ENTRA_TENANT_SUBDOMAIN after setup."
     exit 1
 fi
+
+# Delete the temporary Graph automation app now, while still in the external
+# tenant context, so no standing credential remains. Clear the EXIT trap since
+# cleanup is done here explicitly.
+echo "  Removing temporary Graph automation app..."
+cleanup_graph_app
+trap - EXIT
+GRAPH_TOKEN=""
 
 # Switch the active CLI context back to the subscription for infra deployment.
 if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then

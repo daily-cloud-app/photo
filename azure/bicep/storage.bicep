@@ -68,3 +68,8 @@ output name string = storageAccount.name
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
 output deploymentContainerName string = deploymentContainerName
 output photosContainerName string = photosContainerName
+
+// Connection string for the app logic (SAS generation needs the account key).
+// Built inside the module so listKeys() resolves against a concrete resource.
+@secure()
+output connectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'

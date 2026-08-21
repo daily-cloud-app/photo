@@ -39,7 +39,8 @@ param maximumInstanceCount int = 100
 @description('Per-instance memory in MB (512, 2048, or 4096).')
 param instanceMemoryMB int = 2048
 
-@description('Application settings that carry the app configuration (Entra, Cosmos, Storage, feature flags).')
+@description('Application settings that carry the app configuration (Entra, Cosmos, Storage, feature flags). Marked secure because it includes connection strings.')
+@secure()
 param appConfigSettings object
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {

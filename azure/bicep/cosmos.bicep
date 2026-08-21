@@ -106,3 +106,8 @@ output id string = cosmosAccount.id
 output name string = cosmosAccount.name
 output databaseName string = databaseName
 output documentEndpoint string = cosmosAccount.properties.documentEndpoint
+
+// Connection string for the Cosmos SDK used by the app logic. Built inside the
+// module so listConnectionStrings() resolves against a concrete resource.
+@secure()
+output connectionString string = cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString

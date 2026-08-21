@@ -99,24 +99,14 @@ module iam 'iam.bicep' = {
   }
 }
 
-// Reference deployed data resources to build connection strings for the app
-// logic (SAS generation + Cosmos SDK). Platform storage uses managed identity.
-resource storageAccountRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: storage.outputs.name
-}
-
-resource cosmosAccountRef 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
-  name: cosmos.outputs.name
-}
-
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.outputs.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccountRef.listKeys().keys[0].value}'
-var cosmosConnectionString = cosmosAccountRef.listConnectionStrings().connectionStrings[0].connectionString
-
+// Connection strings for the app logic (SAS generation + Cosmos SDK) are built
+// inside their modules, where listKeys()/listConnectionStrings() can resolve
+// against concrete resources. Platform storage uses managed identity.
 var appConfigSettings = {
   // App logic data-plane connections.
-  COSMOS_CONNECTION: cosmosConnectionString
+  COSMOS_CONNECTION: cosmos.outputs.connectionString
   COSMOS_DATABASE: cosmosDatabase
-  STORAGE_CONNECTION: storageConnectionString
+  STORAGE_CONNECTION: storage.outputs.connectionString
   STORAGE_CONTAINER: photosContainer
   // Microsoft Entra External ID (native authentication).
   ENTRA_TENANT_SUBDOMAIN: entraTenantSubdomain

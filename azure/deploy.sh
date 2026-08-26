@@ -435,11 +435,13 @@ fi
 # Idempotent: create the flow if absent; if a flow with our name already exists,
 # converge its state by ensuring the current app is in includeApplications.
 echo "  Configuring sign-up/sign-in user flow '$ENTRA_USER_FLOW_NAME'..."
+# Note: the authenticationEventsFlows endpoint does not support $select, so we
+# fetch the full list and match by displayName client-side.
 FLOWS_JSON=$(graph_call GET \
-    "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows?\$select=id,displayName"); RC=$?
+    "https://graph.microsoft.com/v1.0/identity/authenticationEventsFlows"); RC=$?
 if [ $RC -ne 0 ]; then
     echo "  ERROR: Could not list user flows."
-    echo "  Ensure the signed-in user has the 'External ID User Flow Administrator' role."
+    echo "  Ensure the automation app has the 'EventListener.ReadWrite.All' application permission."
     exit 1
 fi
 EXISTING_FLOW_ID=$(echo "$FLOWS_JSON" | python3 -c "

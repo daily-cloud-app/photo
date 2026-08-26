@@ -239,23 +239,43 @@ if [ -z "$ENTRA_TENANT_ID" ]; then
     exit 1
 fi
 
-# ── 3b. Sign in to the external tenant for Graph (1 interactive login) ──
-# Graph operations below run against the external tenant. Acquire a token; if
-# the current session isn't signed in to that tenant, request a one-time login.
-GRAPH_TOKEN=$(az account get-access-token --tenant "$ENTRA_TENANT_ID" \
-    --resource-type ms-graph --query accessToken -o tsv 2>/dev/null || echo "")
+# ── 3b. Make the external tenant the ACTIVE CLI context ──────
+# Everything in Step 3 (creating the temporary Graph app, the app registration,
+# the user flow) must target the external tenant. It is not enough to merely be
+# able to fetch a token for it — the active `az` context (used by `az ad ...`)
+# must be the external tenant, otherwise the temporary app gets created in the
+# home tenant and its token lacks the external-tenant roles.
+#
+# Prefer switching to an already-signed-in account for this tenant; otherwise
+# perform a one-time interactive login.
+if ! az account set --subscription "$ENTRA_TENANT_ID" --only-show-errors 2>/dev/null; then
+    # Try to find any existing account whose tenant is the external tenant.
+    EXT_ACCOUNT=$(az account list --all \
+        --query "[?tenantId=='$ENTRA_TENANT_ID'] | [0].id" -o tsv 2>/dev/null || echo "")
+    if [ -n "$EXT_ACCOUNT" ]; then
+        az account set --subscription "$EXT_ACCOUNT" --only-show-errors 2>/dev/null || true
+    fi
+fi
 
-if [ -z "$GRAPH_TOKEN" ]; then
+# Verify the active context is now the external tenant; if not, sign in.
+ACTIVE_TENANT=$(az account show --query tenantId -o tsv 2>/dev/null || echo "")
+if [ "$ACTIVE_TENANT" != "$ENTRA_TENANT_ID" ]; then
     echo "  A one-time sign-in to the external tenant is required."
     echo "  Launching: az login --tenant $ENTRA_TENANT_ID --allow-no-subscriptions"
     az login --tenant "$ENTRA_TENANT_ID" --allow-no-subscriptions --only-show-errors >/dev/null
-    GRAPH_TOKEN=$(az account get-access-token --tenant "$ENTRA_TENANT_ID" \
-        --resource-type ms-graph --query accessToken -o tsv 2>/dev/null || echo "")
+    ACTIVE_TENANT=$(az account show --query tenantId -o tsv 2>/dev/null || echo "")
 fi
 
+if [ "$ACTIVE_TENANT" != "$ENTRA_TENANT_ID" ]; then
+    echo "  ERROR: Could not activate the external tenant context ($ENTRA_TENANT_ID)."
+    echo "  Run 'az login --tenant $ENTRA_TENANT_ID --allow-no-subscriptions' and retry."
+    exit 1
+fi
+
+GRAPH_TOKEN=$(az account get-access-token --tenant "$ENTRA_TENANT_ID" \
+    --resource-type ms-graph --query accessToken -o tsv 2>/dev/null || echo "")
 if [ -z "$GRAPH_TOKEN" ]; then
     echo "  ERROR: Could not obtain a Microsoft Graph token for the external tenant."
-    echo "  Run 'az login --tenant $ENTRA_TENANT_ID --allow-no-subscriptions' and retry."
     exit 1
 fi
 

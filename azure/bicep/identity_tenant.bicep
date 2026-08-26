@@ -31,13 +31,11 @@ param dataLocation string = 'United States'
 @description('Country code for the tenant (e.g. US, JP). Must map to a valid data residency location.')
 param countryCode string = 'US'
 
-@description('SKU name for the CIAM tenant.')
+@description('SKU name for the CIAM (External ID) tenant. External ID uses "Base".')
 @allowed([
-  'Standard'
-  'PremiumP1'
-  'PremiumP2'
+  'Base'
 ])
-param skuName string = 'Standard'
+param skuName string = 'Base'
 
 resource ciamTenant 'Microsoft.AzureActiveDirectory/ciamDirectories@2023-05-17-preview' = {
   name: tenantResourceName

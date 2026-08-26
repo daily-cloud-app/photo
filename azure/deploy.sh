@@ -57,7 +57,6 @@ TENANT_RESOURCE_NAME="${TENANT_RESOURCE_NAME:-dcp$(date +%s | tail -c 8)}"
 TENANT_DISPLAY_NAME="${TENANT_DISPLAY_NAME:-Daily Cloud Photo External ID}"
 TENANT_DATA_LOCATION="${TENANT_DATA_LOCATION:-United States}"
 TENANT_COUNTRY_CODE="${TENANT_COUNTRY_CODE:-US}"
-BICEP_TENANT="./bicep/identity_tenant.bicep"
 
 echo "=============================================="
 echo " Daily Cloud Photo — Azure Deployment (Bicep)"
@@ -168,31 +167,56 @@ except Exception:
 }
 
 # ── 3a. Create the external tenant (opt-in) ──────────────────
-# ciamDirectories requires a DELEGATED user token, so it is deployed with the
-# currently signed-in user (not a managed identity). Skipped entirely when an
-# existing tenant is provided.
+# The external (CIAM) tenant is created via the ARM REST API directly, not
+# Bicep: the ciamDirectories preview provider is not correctly handled by the
+# Bicep/ARM template path (it fails preflight with an empty domain suffix),
+# whereas the raw PUT succeeds. It requires a DELEGATED user token, so it runs
+# as the currently signed-in user. Skipped entirely when an existing tenant is
+# provided. The SKU name must be 'Base' (tier 'A0').
 if [ "$CREATE_TENANT" = "true" ] && [ -z "$ENTRA_TENANT_ID" ]; then
-    echo "  Creating external (CIAM) tenant '$TENANT_DISPLAY_NAME' ..."
+    echo "  Creating external (CIAM) tenant '$TENANT_DISPLAY_NAME' (name=$TENANT_RESOURCE_NAME)..."
     az group create --name "$RESOURCE_GROUP" --location "$LOCATION" "${SUB_ARG[@]}" --output none
 
-    TENANT_OUTPUT=$(az deployment group create \
-        "${SUB_ARG[@]}" \
-        --resource-group "$RESOURCE_GROUP" \
-        --template-file "$BICEP_TENANT" \
-        --parameters \
-            tenantResourceName="$TENANT_RESOURCE_NAME" \
-            tenantDisplayName="$TENANT_DISPLAY_NAME" \
-            dataLocation="$TENANT_DATA_LOCATION" \
-            countryCode="$TENANT_COUNTRY_CODE" \
-        --query properties.outputs -o json 2>/dev/null || echo "")
+    CIAM_URL="https://management.azure.com/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.AzureActiveDirectory/ciamDirectories/$TENANT_RESOURCE_NAME?api-version=2023-05-17-preview"
+    CIAM_BODY=$(python3 - "$TENANT_DATA_LOCATION" "$TENANT_DISPLAY_NAME" "$TENANT_COUNTRY_CODE" <<'PY'
+import json, sys
+loc, display, cc = sys.argv[1], sys.argv[2], sys.argv[3]
+print(json.dumps({
+    "location": loc,
+    "sku": {"name": "Base", "tier": "A0"},
+    "properties": {"createTenantProperties": {"displayName": display, "countryCode": cc}},
+}))
+PY
+)
 
-    ENTRA_TENANT_ID=$(echo "$TENANT_OUTPUT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('tenantId',{}).get('value',''))" 2>/dev/null || echo "")
+    CREATE_RESP=$(az rest --method PUT --url "$CIAM_URL" --body "$CIAM_BODY" -o json 2>&1) || {
+        echo "  ERROR: External tenant creation failed:"
+        echo "  $CREATE_RESP"
+        exit 1
+    }
+
+    # Creation is asynchronous. Poll until provisioningState is Succeeded and a
+    # real tenantId is assigned.
+    echo "  Waiting for the tenant to finish provisioning..."
+    ENTRA_TENANT_ID=""
+    for _ in $(seq 1 30); do
+        POLL=$(az rest --method GET --url "$CIAM_URL" -o json 2>/dev/null || echo "{}")
+        STATE=$(echo "$POLL" | python3 -c "import sys,json;print((json.load(sys.stdin).get('properties') or {}).get('provisioningState',''))" 2>/dev/null || echo "")
+        TID=$(echo "$POLL" | python3 -c "import sys,json;print((json.load(sys.stdin).get('properties') or {}).get('tenantId',''))" 2>/dev/null || echo "")
+        if [ "$STATE" = "Succeeded" ] && [ -n "$TID" ] && [ "$TID" != "00000000-0000-0000-0000-000000000000" ]; then
+            ENTRA_TENANT_ID="$TID"
+            break
+        fi
+        if [ "$STATE" = "Failed" ] || [ "$STATE" = "Canceled" ]; then
+            echo "  ERROR: Tenant provisioning reported state: $STATE"
+            exit 1
+        fi
+        sleep 10
+    done
 
     if [ -z "$ENTRA_TENANT_ID" ]; then
-        echo "  ERROR: External tenant creation failed."
-        echo "  Creating ciamDirectories needs a delegated user token and"
-        echo "  subscription permissions. Ensure you ran 'az login' as a user"
-        echo "  (not a service principal) with rights to create the resource."
+        echo "  ERROR: Tenant did not finish provisioning in time."
+        echo "  Check the resource '$TENANT_RESOURCE_NAME' in resource group '$RESOURCE_GROUP'."
         exit 1
     fi
     echo "  External tenant created. tenant_id=$ENTRA_TENANT_ID"

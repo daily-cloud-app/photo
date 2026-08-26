@@ -23,6 +23,7 @@
 3. When prompted, complete the one-time sign-in to the new sign-in directory
 4. Copy the API endpoint URL from the output into the app
 
+> [!NOTE]
 > Sign-up, email verification, sign-in and password reset are handled by
 > Microsoft Entra External ID. `CREATE_TENANT=true` creates a new sign-in
 > directory for you. To reuse an existing one, pass `ENTRA_TENANT_ID=<guid>`
@@ -129,6 +130,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 3. 途中で表示されたら、新しいサインイン用ディレクトリへの1回きりのサインインを完了
 4. 出力された API エンドポイント URL をアプリに入力
 
+> [!NOTE]
 > サインアップ・メール確認・サインイン・パスワードリセットは Microsoft Entra
 > External ID が処理します。`CREATE_TENANT=true` で新しいサインイン用ディレクトリを
 > 自動作成します。既存のものを使う場合は代わりに `ENTRA_TENANT_ID=<guid>` を指定

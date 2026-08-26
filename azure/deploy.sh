@@ -87,12 +87,22 @@ fi
 echo "  Logged in as: $(az account show --query user.name -o tsv)"
 echo "  Subscription: $(az account show --query name -o tsv)"
 
-# Remember the subscription so we can switch back after any external-tenant
-# login (az login --tenant changes the active CLI context). SUB_ARG pins the
-# subscription on every infrastructure-side az call.
-AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-$(az account show --query id -o tsv 2>/dev/null || echo "")}"
-SUB_ARG=()
-[ -n "$AZURE_SUBSCRIPTION_ID" ] && SUB_ARG=(--subscription "$AZURE_SUBSCRIPTION_ID")
+# Remember a REAL subscription so we can pin it on every infrastructure-side az
+# call. This matters because the external-tenant login in Step 3 switches the
+# active CLI context to a tenant-level account (no subscription), where
+# 'az account show --query id' returns the tenant id, not a subscription id.
+# We therefore pick an enabled subscription whose id differs from its tenant id.
+if [ -z "${AZURE_SUBSCRIPTION_ID:-}" ]; then
+    AZURE_SUBSCRIPTION_ID=$(az account list --all --query \
+        "[?state=='Enabled' && id!=tenantId] | [0].id" -o tsv 2>/dev/null || echo "")
+fi
+if [ -z "$AZURE_SUBSCRIPTION_ID" ]; then
+    echo "  ERROR: No usable Azure subscription found for the signed-in user."
+    echo "  Run 'az login' with an account that has an active subscription."
+    exit 1
+fi
+SUB_ARG=(--subscription "$AZURE_SUBSCRIPTION_ID")
+echo "  Using subscription: $AZURE_SUBSCRIPTION_ID"
 echo ""
 
 # ============================================================
@@ -586,8 +596,13 @@ trap - EXIT
 GRAPH_TOKEN=""
 
 # Switch the active CLI context back to the subscription for infra deployment.
-if [ -n "${AZURE_SUBSCRIPTION_ID:-}" ]; then
-    az account set --subscription "$AZURE_SUBSCRIPTION_ID" --only-show-errors 2>/dev/null || true
+# The external-tenant login in Step 3 left the active context on a tenant-level
+# account; restore the real subscription so Step 4 targets the right place.
+if ! az account set --subscription "$AZURE_SUBSCRIPTION_ID" --only-show-errors; then
+    echo "  ERROR: Could not switch back to subscription $AZURE_SUBSCRIPTION_ID."
+    echo "  Run 'az login' (home tenant) and re-run; the external-tenant login"
+    echo "  changed the active context."
+    exit 1
 fi
 echo ""
 

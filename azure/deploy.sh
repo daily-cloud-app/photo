@@ -396,11 +396,22 @@ PY
 fi
 
 # Ensure native authentication is enabled on the app (idempotent for reuse).
-# This is required for the native-auth API to work, so fail loudly on error.
+# The create body already sets nativeAuthenticationApisEnabled, but we confirm
+# it here (and it is required for the reuse path). A freshly created app object
+# is eventually consistent across Graph replicas, so a PATCH immediately after
+# creation can transiently return 404 — retry with backoff before giving up.
 if [ -n "$ENTRA_APP_OBJECT_ID" ]; then
-    if ! graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
-        '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null; then
-        echo "  ERROR: Failed to enable native authentication on the app."
+    NATIVE_OK=""
+    for _ in $(seq 1 12); do
+        if graph_call PATCH "https://graph.microsoft.com/v1.0/applications/$ENTRA_APP_OBJECT_ID" \
+            '{"nativeAuthenticationApisEnabled":"all","isFallbackPublicClient":true}' >/dev/null 2>&1; then
+            NATIVE_OK="yes"
+            break
+        fi
+        sleep 5
+    done
+    if [ -z "$NATIVE_OK" ]; then
+        echo "  ERROR: Failed to enable native authentication on the app (after retries)."
         exit 1
     fi
 else

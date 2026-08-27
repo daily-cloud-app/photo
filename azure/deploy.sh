@@ -688,17 +688,21 @@ DEPLOY_ZIP="$(mktemp -d)/app.zip"
     zip -r "$DEPLOY_ZIP" . -x "__pycache__/*" "*.pyc" ".venv/*" ".git/*" "local.settings.json" >/dev/null
 )
 
-# Flex Consumption uses OneDeploy: the package is uploaded to the deployment
-# storage container configured in the Bicep functionAppConfig. This is not the
-# legacy content-share config-zip flow.
-az functionapp deploy \
+# For Flex Consumption, the package is uploaded to the deployment storage
+# container configured in the Bicep functionAppConfig, and Azure performs a
+# remote (Oryx) build. This is the documented Flex deploy command; --build-remote
+# requests the server-side build (required for Python).
+if ! az functionapp deployment source config-zip \
     "${SUB_ARG[@]}" \
     --resource-group "$RESOURCE_GROUP" \
     --name "$FUNCTION_APP_NAME" \
-    --src-path "$DEPLOY_ZIP" \
-    --type zip \
-    --remote-build \
-    --output none
+    --src "$DEPLOY_ZIP" \
+    --build-remote true \
+    --output none; then
+    echo "  ERROR: Function code deployment failed."
+    rm -f "$DEPLOY_ZIP"
+    exit 1
+fi
 
 rm -f "$DEPLOY_ZIP"
 echo "  Code deployed."

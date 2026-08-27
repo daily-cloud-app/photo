@@ -18,16 +18,16 @@
    ```bash
    git clone https://github.com/daily-cloud-app/photo.git
    cd photo/azure
-   chmod +x deploy.sh && CREATE_TENANT=true ./deploy.sh
+   chmod +x deploy.sh && ./deploy.sh
    ```
 3. When prompted, complete the one-time sign-in to the new sign-in directory
 4. Copy the API endpoint URL from the output into the app
 
 > [!NOTE]
 > Sign-up, email verification, sign-in and password reset are handled by
-> Microsoft Entra External ID. `CREATE_TENANT=true` creates a new sign-in
-> directory for you. To reuse an existing one, pass `ENTRA_TENANT_ID=<guid>`
-> instead. You need to be an administrator of that directory.
+> Microsoft Entra External ID. By default the script creates a new sign-in
+> directory for you. To reuse an existing one, run `ENTRA_TENANT_ID=<guid> ./deploy.sh`.
+> You need to be an administrator of that directory.
 
 ### Parameters
 
@@ -39,8 +39,8 @@ You can customize the deployment by setting environment variables before running
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| CREATE_TENANT | `false` | Create a new sign-in directory (External ID tenant) |
-| ENTRA_TENANT_ID | (created) | Reuse an existing sign-in directory instead |
+| CREATE_TENANT | `true` | Create a new sign-in directory (External ID tenant). Set `false` to skip |
+| ENTRA_TENANT_ID | (created) | Reuse an existing sign-in directory instead (skips creation) |
 | RESOURCE_GROUP | `daily-cloud-photo-rg` | Target resource group |
 | LOCATION | `eastus` | Deployment region |
 | APP_NAME | `dailycloudphoto` | Base name for all resources |
@@ -125,16 +125,16 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
    ```bash
    git clone https://github.com/daily-cloud-app/photo.git
    cd photo/azure
-   chmod +x deploy.sh && CREATE_TENANT=true ./deploy.sh
+   chmod +x deploy.sh && ./deploy.sh
    ```
 3. 途中で表示されたら、新しいサインイン用ディレクトリへの1回きりのサインインを完了
 4. 出力された API エンドポイント URL をアプリに入力
 
 > [!NOTE]
 > サインアップ・メール確認・サインイン・パスワードリセットは Microsoft Entra
-> External ID が処理します。`CREATE_TENANT=true` で新しいサインイン用ディレクトリを
-> 自動作成します。既存のものを使う場合は代わりに `ENTRA_TENANT_ID=<guid>` を指定
-> してください。そのディレクトリの管理者である必要があります。
+> External ID が処理します。既定では新しいサインイン用ディレクトリを自動作成します。
+> 既存のものを使う場合は `ENTRA_TENANT_ID=<guid> ./deploy.sh` のように実行してください。
+> そのディレクトリの管理者である必要があります。
 
 ### パラメータ一覧
 
@@ -146,8 +146,8 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
-| CREATE_TENANT | `false` | サインイン用ディレクトリ（External ID テナント）を新規作成 |
-| ENTRA_TENANT_ID | (作成) | 既存のサインイン用ディレクトリを再利用する場合に指定 |
+| CREATE_TENANT | `true` | サインイン用ディレクトリ（External ID テナント）を新規作成。`false` でスキップ |
+| ENTRA_TENANT_ID | (作成) | 既存のサインイン用ディレクトリを再利用する場合に指定（作成をスキップ） |
 | RESOURCE_GROUP | `daily-cloud-photo-rg` | 対象リソースグループ |
 | LOCATION | `eastus` | デプロイリージョン |
 | APP_NAME | `dailycloudphoto` | リソース名のベース |

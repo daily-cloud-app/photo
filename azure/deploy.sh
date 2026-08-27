@@ -49,10 +49,11 @@ ENTRA_CLIENT_ID="${ENTRA_CLIENT_ID:-}"
 ENTRA_APP_DISPLAY_NAME="${ENTRA_APP_DISPLAY_NAME:-Daily Cloud Photo (native auth)}"
 ENTRA_USER_FLOW_NAME="${ENTRA_USER_FLOW_NAME:-DailyCloudPhotoSignUpSignIn}"
 
-# External ID tenant creation (opt-in). When CREATE_TENANT=true, deploy.sh
-# provisions a new external (CIAM) tenant via Bicep. Otherwise an existing
-# tenant is used (ENTRA_TENANT_ID / ENTRA_CLIENT_ID).
-CREATE_TENANT="${CREATE_TENANT:-false}"
+# External ID tenant handling. By default (no env vars) deploy.sh creates a new
+# external (CIAM) tenant so a plain `./deploy.sh` works end to end. To reuse an
+# existing tenant, pass ENTRA_TENANT_ID=<guid>; creation is then skipped
+# automatically. Set CREATE_TENANT=false to force skipping creation.
+CREATE_TENANT="${CREATE_TENANT:-true}"
 TENANT_RESOURCE_NAME="${TENANT_RESOURCE_NAME:-dcp$(date +%s | tail -c 8)}"
 TENANT_DISPLAY_NAME="${TENANT_DISPLAY_NAME:-Daily Cloud Photo External ID}"
 TENANT_DATA_LOCATION="${TENANT_DATA_LOCATION:-United States}"

@@ -482,6 +482,37 @@ if [ -z "$SP_EXISTS" ]; then
     exit 1
 fi
 echo "  Service principal ready."
+APP_SP_ID="$SP_EXISTS"
+
+# Grant tenant-wide admin consent so the app can be issued tokens. Without this,
+# the final /oauth2/v2.0/token step during sign-in fails with AADSTS65001
+# (consent_required) even though the username, password and flow are all valid.
+# We create an oauth2PermissionGrant (AllPrincipals) for the delegated OpenID
+# Connect scopes against Microsoft Graph. Idempotent: skip if one exists.
+echo "  Granting admin consent to the app (OpenID Connect scopes)..."
+GRAPH_RES_SP_ID=$(graph_call GET \
+    "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$GRAPH_MSGRAPH_APPID')" 2>/dev/null | json_get id)
+if [ -z "$GRAPH_RES_SP_ID" ]; then
+    echo "  WARNING: Could not resolve the Microsoft Graph service principal; skipping consent."
+else
+    EXISTING_GRANT=$(graph_call GET \
+        "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP_ID' and resourceId eq '$GRAPH_RES_SP_ID'" 2>/dev/null \
+        | python3 -c "import sys,json
+try:
+    print((json.load(sys.stdin).get('value') or [{}])[0].get('id',''))
+except Exception:
+    print('')" 2>/dev/null || echo "")
+    if [ -n "$EXISTING_GRANT" ]; then
+        echo "  Admin consent already present."
+    else
+        GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
+        if graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null; then
+            echo "  Admin consent granted."
+        else
+            echo "  WARNING: Failed to grant admin consent; sign-in may fail with consent_required."
+        fi
+    fi
+fi
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
 # Email one-time passcode must be enabled tenant-wide so native credential

@@ -599,6 +599,9 @@ def auth_signin(req: func.HttpRequest) -> func.HttpResponse:
     doc = _find_user_doc(username)
     entra_username = (doc or {}).get("email") or username
 
+    logger.warning("signin: username=%s resolved entra_username=%s (mapping=%s)",
+                   username, entra_username, "hit" if doc else "miss")
+
     # Step 1: /oauth2/v2.0/initiate
     status, body = _entra_post("/oauth2/v2.0/initiate", {
         "username": entra_username,
@@ -606,7 +609,8 @@ def auth_signin(req: func.HttpRequest) -> func.HttpResponse:
     })
     if status != 200:
         # user_not_found and other errors are masked to avoid enumeration.
-        logger.info("signin/initiate failed: %s", body.get("error"))
+        logger.warning("signin/initiate failed: status=%s error=%s suberror=%s desc=%s",
+                       status, body.get("error"), body.get("suberror"), body.get("error_description"))
         return _err(401, "Incorrect username or password", "NotAuthorized")
 
     continuation_token = body.get("continuation_token")
@@ -617,8 +621,13 @@ def auth_signin(req: func.HttpRequest) -> func.HttpResponse:
         "challenge_type": _CHALLENGE_SIGNIN,
     })
     if status != 200:
-        logger.info("signin/challenge failed: %s", body.get("error"))
+        logger.warning("signin/challenge failed: status=%s error=%s suberror=%s desc=%s challenge_type=%s",
+                       status, body.get("error"), body.get("suberror"), body.get("error_description"),
+                       body.get("challenge_type"))
         return _err(401, "Incorrect username or password", "NotAuthorized")
+
+    # Log what challenge method Entra selected (password vs oob/redirect).
+    logger.warning("signin/challenge ok: challenge_type=%s", body.get("challenge_type"))
 
     continuation_token = body.get("continuation_token", continuation_token)
 
@@ -630,7 +639,9 @@ def auth_signin(req: func.HttpRequest) -> func.HttpResponse:
         "scope": ENTRA_SCOPES,
     })
     if status != 200:
-        logger.info("signin/token failed: %s", token_body.get("error"))
+        logger.warning("signin/token failed: status=%s error=%s suberror=%s desc=%s",
+                       status, token_body.get("error"), token_body.get("suberror"),
+                       token_body.get("error_description"))
         return _err(401, "Incorrect username or password", "NotAuthorized")
 
     # Keep the username -> entra id mapping fresh (best effort).

@@ -453,17 +453,27 @@ fi
 # The app registration needs a matching service principal in the tenant,
 # otherwise associating it with a user flow fails with "application id ...
 # is invalid". Create it if missing (idempotent) and wait until it is visible.
+#
+# sp_object_id() prints the SP id (or empty) and always returns 0, so a "not
+# found" (404) never trips `set -e` / `pipefail`.
+sp_object_id() {
+    local out
+    out=$(graph_call GET \
+        "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$ENTRA_CLIENT_ID')" 2>/dev/null || true)
+    printf '%s' "$out" | json_get id
+    return 0
+}
+
 echo "  Ensuring the app has a service principal..."
-SP_EXISTS=$(graph_call GET \
-    "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$ENTRA_CLIENT_ID')" 2>/dev/null | json_get id)
+SP_EXISTS="$(sp_object_id)"
 if [ -z "$SP_EXISTS" ]; then
+    echo "  Creating service principal..."
     graph_call POST "https://graph.microsoft.com/v1.0/servicePrincipals" \
         "{\"appId\":\"$ENTRA_CLIENT_ID\"}" >/dev/null 2>&1 || true
 fi
 # Wait for the service principal to be resolvable before creating the flow.
 for _ in $(seq 1 12); do
-    SP_EXISTS=$(graph_call GET \
-        "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$ENTRA_CLIENT_ID')" 2>/dev/null | json_get id)
+    SP_EXISTS="$(sp_object_id)"
     [ -n "$SP_EXISTS" ] && break
     sleep 5
 done
@@ -471,6 +481,7 @@ if [ -z "$SP_EXISTS" ]; then
     echo "  ERROR: The app's service principal did not become available."
     exit 1
 fi
+echo "  Service principal ready."
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
 # Email one-time passcode must be enabled tenant-wide so native credential

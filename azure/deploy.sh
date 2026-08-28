@@ -13,9 +13,10 @@
 # Prerequisites:
 #   - Azure CLI (az) logged in:  az login
 #   - zip, curl, python3 (pre-installed in Cloud Shell)
-#   - An existing Microsoft Entra *external* tenant (see README). Creating an
-#     external tenant is not scriptable end-to-end, so its subdomain + id are
-#     taken as input; everything after that is automated.
+#   - By default (CREATE_TENANT=true) the script creates a new Microsoft Entra
+#     *external* (CIAM) tenant for you via the ARM REST API — no pre-existing
+#     tenant is required. To reuse one instead, pass ENTRA_TENANT_ID=<guid>
+#     (creation is then skipped). Everything after tenant selection is automated.
 #
 # Usage:
 #   chmod +x deploy.sh

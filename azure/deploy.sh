@@ -518,11 +518,35 @@ except Exception:
     if [ -n "$EXISTING_GRANT" ]; then
         echo "  Admin consent already present."
     else
+        # A freshly created external (CIAM) tenant is not immediately ready for
+        # this write: the directory's company/organization object is still being
+        # provisioned, so the POST can fail with 404 Directory_ObjectNotFound
+        # ("Unable to read the company information from the directory") even
+        # though the tenant reports Succeeded. This is timing, not permissions.
+        # Retry until the directory is ready and the grant is created. Also wait
+        # for /organization to return a record first, which is the signal that
+        # the directory is initialized enough to accept the grant.
         GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
-        if graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null; then
+        CONSENT_OK=""
+        for attempt in $(seq 1 18); do
+            # Ensure the directory is initialized (company information readable).
+            ORG_READY=$(graph_call GET "https://graph.microsoft.com/v1.0/organization" 2>/dev/null \
+                | python3 -c "import sys,json
+try:
+    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no")
+            if [ "$ORG_READY" = "yes" ] && \
+               graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null 2>&1; then
+                CONSENT_OK="yes"
+                break
+            fi
+            sleep 10
+        done
+        if [ -n "$CONSENT_OK" ]; then
             echo "  Admin consent granted."
         else
-            echo "  WARNING: Failed to grant admin consent; sign-in may fail with consent_required."
+            echo "  WARNING: Failed to grant admin consent after retries; sign-in may fail with consent_required."
         fi
     fi
 fi

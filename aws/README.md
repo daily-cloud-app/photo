@@ -55,6 +55,11 @@ You can also deploy via the Console GUI — upload `template.yaml` and fill in p
 
 ### Deleting Resources
 
+> [!WARNING]
+> **Running the steps below permanently deletes all your photos stored in the cloud.**
+> The commands empty the S3 bucket (including all object versions) and then delete
+> the stack. This cannot be undone. **Back up any data you need before proceeding.**
+
 ```bash
 BUCKET=$(aws cloudformation describe-stacks --stack-name daily-cloud-photo \
   --query "Stacks[0].Outputs[?OutputKey=='PhotosBucketName'].OutputValue" --output text)
@@ -160,6 +165,11 @@ GUI でデプロイする場合は、コンソールから `template.yaml` を�
 ### リソースの削除
 
 [![Open in CloudShell](https://img.shields.io/badge/AWS-CloudShell-orange?logo=amazonaws)](https://console.aws.amazon.com/cloudshell/home)
+
+> [!WARNING]
+> **以下の手順を実行すると、クラウド上に保存された写真もすべて削除されます。**
+> このコマンドは S3 バケットを空にし（全オブジェクトバージョンを含む）、スタックを削除します。
+> **元に戻すことはできません。必要なデータは事前にバックアップしてください。**
 
 ```bash
 BUCKET=$(aws cloudformation describe-stacks --stack-name daily-cloud-photo \

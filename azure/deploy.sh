@@ -527,19 +527,47 @@ except Exception:
         # for /organization to return a record first, which is the signal that
         # the directory is initialized enough to accept the grant.
         GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
+
+        # Returns "yes" if a grant for this (client, resource) pair now exists.
+        grant_exists() {
+            graph_call GET \
+                "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP_ID' and resourceId eq '$GRAPH_RES_SP_ID'" 2>/dev/null \
+                | python3 -c "import sys,json
+try:
+    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no"
+        }
+
         CONSENT_OK=""
         for attempt in $(seq 1 18); do
-            # Ensure the directory is initialized (company information readable).
+            # Success if the grant already exists (e.g. an earlier POST in this
+            # loop actually landed and a later retry got 409 Conflict). Checking
+            # existence — not just POST success — avoids falsely reporting
+            # failure when consent is in fact present.
+            if [ "$(grant_exists)" = "yes" ]; then
+                CONSENT_OK="yes"
+                break
+            fi
+            # Ensure the directory is initialized (company information readable)
+            # before attempting the write. A freshly created external (CIAM)
+            # tenant reports Succeeded before its organization object exists, so
+            # the POST can fail with 404 Directory_ObjectNotFound. This is
+            # timing, not permissions — so we poll and retry.
             ORG_READY=$(graph_call GET "https://graph.microsoft.com/v1.0/organization" 2>/dev/null \
                 | python3 -c "import sys,json
 try:
     print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
 except Exception:
     print('no')" 2>/dev/null || echo "no")
-            if [ "$ORG_READY" = "yes" ] && \
-               graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null 2>&1; then
-                CONSENT_OK="yes"
-                break
+            if [ "$ORG_READY" = "yes" ]; then
+                graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null 2>&1 || true
+                # Re-check existence rather than trusting the POST status: the
+                # grant may have been created even if this call returned 409/4xx.
+                if [ "$(grant_exists)" = "yes" ]; then
+                    CONSENT_OK="yes"
+                    break
+                fi
             fi
             sleep 10
         done

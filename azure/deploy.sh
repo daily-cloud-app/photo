@@ -539,8 +539,13 @@ except Exception:
     print('no')" 2>/dev/null || echo "no"
         }
 
+        # Poll for up to ~8 minutes (48 x 10s). A freshly created CIAM tenant
+        # can take several minutes before its directory accepts this write, and
+        # 3 minutes was not always enough in practice, leaving consent unset and
+        # sign-in failing. 8 minutes covers the observed initialization delay
+        # while still fitting inside the one-command deploy.
         CONSENT_OK=""
-        for attempt in $(seq 1 18); do
+        for attempt in $(seq 1 48); do
             # Success if the grant already exists (e.g. an earlier POST in this
             # loop actually landed and a later retry got 409 Conflict). Checking
             # existence — not just POST success — avoids falsely reporting

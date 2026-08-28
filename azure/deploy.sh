@@ -739,6 +739,15 @@ echo ""
 # ============================================================
 echo "[4/7] Creating resource group and deploying Bicep..."
 
+# OAuth scopes the backend requests when signing users in. The default
+# "openid offline_access" yields a token whose audience is Microsoft Graph,
+# which the API cannot validate against the tenant JWKS (Graph tokens use a
+# special signature), so every authenticated call fails with 401. Requesting
+# "<clientId>/.default" makes Entra issue a token whose audience is THIS app,
+# which the backend can validate (signature + issuer). Without this, sign-in
+# succeeds but uploads and all other authenticated endpoints return 401.
+ENTRA_SCOPES="${ENTRA_SCOPES:-openid offline_access ${ENTRA_CLIENT_ID}/.default}"
+
 # SUB_ARG (defined in Step 1) pins the subscription: an external-tenant login
 # in Step 3 may have changed the active CLI context.
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" "${SUB_ARG[@]}" --output none
@@ -752,6 +761,7 @@ DEPLOYMENT_OUTPUT=$(az deployment group create \
         entraTenantSubdomain="$ENTRA_TENANT_SUBDOMAIN" \
         entraTenantId="$ENTRA_TENANT_ID" \
         entraClientId="$ENTRA_CLIENT_ID" \
+        entraScopes="$ENTRA_SCOPES" \
     --query properties.outputs \
     --output json)
 

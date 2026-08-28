@@ -478,18 +478,25 @@ sp_object_id() {
 }
 
 echo "  Ensuring the app has a service principal..."
+# A freshly created app registration is eventually consistent across Graph
+# replicas: the servicePrincipals POST can return 404 ("application not found")
+# for a while after the app is created. Previously we attempted the create only
+# once and then merely polled with GET, so if that single POST hit the
+# replication gap the SP was never created and the wait always timed out.
+# Instead, retry BOTH the create and the lookup for up to ~3 minutes.
 SP_EXISTS="$(sp_object_id)"
 if [ -z "$SP_EXISTS" ]; then
     echo "  Creating service principal..."
-    graph_call POST "https://graph.microsoft.com/v1.0/servicePrincipals" \
-        "{\"appId\":\"$ENTRA_CLIENT_ID\"}" >/dev/null 2>&1 || true
+    for _ in $(seq 1 36); do
+        SP_EXISTS="$(sp_object_id)"
+        [ -n "$SP_EXISTS" ] && break
+        graph_call POST "https://graph.microsoft.com/v1.0/servicePrincipals" \
+            "{\"appId\":\"$ENTRA_CLIENT_ID\"}" >/dev/null 2>&1 || true
+        SP_EXISTS="$(sp_object_id)"
+        [ -n "$SP_EXISTS" ] && break
+        sleep 5
+    done
 fi
-# Wait for the service principal to be resolvable before creating the flow.
-for _ in $(seq 1 12); do
-    SP_EXISTS="$(sp_object_id)"
-    [ -n "$SP_EXISTS" ] && break
-    sleep 5
-done
 if [ -z "$SP_EXISTS" ]; then
     echo "  ERROR: The app's service principal did not become available."
     exit 1

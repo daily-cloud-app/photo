@@ -11,6 +11,9 @@
 
 ### Quick Start
 
+> [!IMPORTANT]
+> **One app = one GCP project.** This template assumes Daily Cloud Photo runs in its own dedicated GCP project. Deploy other apps (e.g. Daily Cloud Video) into separate projects. Identity Platform, Firestore, and the Terraform state bucket are per-project resources, so sharing a project across apps will cause conflicts.
+
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
 1. Click the **Cloud Shell** button above
@@ -60,6 +63,9 @@ You can customize the deployment by setting environment variables before running
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
 To keep the project (delete the Terraform resources and the state bucket):
+
+> [!WARNING]
+> Running `terraform destroy` **permanently deletes all photos stored in the cloud** along with the resources. Back up any data you need before proceeding.
 
 ```bash
 gcloud config set project daily-cloud-photo
@@ -130,6 +136,9 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 ### クイックスタート
 
+> [!IMPORTANT]
+> **1 アプリ = 1 GCP プロジェクト。** このテンプレートは、Daily Cloud Photo を専用の GCP プロジェクトで運用することを前提としています。他のアプリ（例: Daily Cloud Video）は別の GCP プロジェクトにデプロイしてください。Identity Platform・Firestore・Terraform state バケットはプロジェクト単位のリソースのため、1 つのプロジェクトを複数アプリで共有すると競合します。
+
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
 1. 上記の **Cloud Shell** ボタンをクリック
@@ -179,6 +188,9 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/daily-cloud-app/photo&cloudshell_working_dir=gcp&cloudshell_tutorial=README.md&cloudshell_open_in_editor=functions/main.py)
 
 プロジェクトを再利用する場合（Terraform リソースと state バケットを削除）：
+
+> [!WARNING]
+> `terraform destroy` を実行すると、リソースと共に**クラウド上の写真もすべて削除されます**。必要なデータは事前にバックアップしてください。
 
 ```bash
 gcloud config set project daily-cloud-photo

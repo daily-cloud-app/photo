@@ -225,8 +225,9 @@ Resources:
                   # 2. Build Pillow layer
                   layer_dir = os.path.join(tmp, 'python')
                   os.makedirs(layer_dir, exist_ok=True)
+                  # Pin Pillow to a specific version for reproducible builds.
                   subprocess.check_call([
-                      'pip', 'install', 'pillow', '-t', layer_dir, '--quiet',
+                      'pip', 'install', 'pillow==10.4.0', '-t', layer_dir, '--quiet',
                       '--platform', 'manylinux2014_x86_64',
                       '--implementation', 'cp',
                       '--python-version', '3.12',
@@ -271,10 +272,13 @@ Resources:
       LambdaKey: lambda.zip
       LayerKey: pillow-layer.zip
       LayerName: !Sub '${AppName}-pillow'
+      # Pinned to a specific commit SHA (not 'main') so the same template always
+      # deploys the same Lambda source, ensuring reproducible deployments.
+      # When you change aws/lambda/*, update this SHA to the new commit.
       SourceFiles:
-        - url: https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/lambda/index.py
+        - url: https://raw.githubusercontent.com/daily-cloud-app/photo/2386a91a20e2b8a01fbd1b5e9ed9dd745ad9186f/aws/lambda/index.py
           name: index.py
-        - url: https://raw.githubusercontent.com/daily-cloud-app/photo/main/aws/lambda/s3_trigger.py
+        - url: https://raw.githubusercontent.com/daily-cloud-app/photo/2386a91a20e2b8a01fbd1b5e9ed9dd745ad9186f/aws/lambda/s3_trigger.py
           name: s3_trigger.py
 
   # -- S3 (Photos) --
@@ -380,8 +384,17 @@ Resources:
                   - s3:HeadObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}'
-                  - !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}/*'
+                  # Use the resolved bucket name (custom or auto-generated) so
+                  # a custom PhotosBucketName is covered. Built from the name
+                  # (not !GetAtt PhotosBucket.Arn) to avoid a circular
+                  # dependency: PhotosBucket -> S3TriggerPermission ->
+                  # S3TriggerFunction -> LambdaExecutionRole.
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}'
+                    - BucketName: !If [UseCustomBucketName, !Ref PhotosBucketName, !Sub '${AppName}-photos-${AWS::AccountId}']
+                  - !Sub
+                    - 'arn:aws:s3:::${BucketName}/*'
+                    - BucketName: !If [UseCustomBucketName, !Ref PhotosBucketName, !Sub '${AppName}-photos-${AWS::AccountId}']
               - Effect: Allow
                 Action:
                   - dynamodb:PutItem
@@ -461,7 +474,12 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
-      SourceArn: !Sub 'arn:aws:s3:::${AppName}-photos-${AWS::AccountId}'
+      # Resolved bucket name (custom or auto-generated). Built from the name
+      # rather than !GetAtt PhotosBucket.Arn because PhotosBucket depends on
+      # this permission (would be circular).
+      SourceArn: !Sub
+        - 'arn:aws:s3:::${BucketName}'
+        - BucketName: !If [UseCustomBucketName, !Ref PhotosBucketName, !Sub '${AppName}-photos-${AWS::AccountId}']
 
   # -- API Gateway (HTTP API) --
 

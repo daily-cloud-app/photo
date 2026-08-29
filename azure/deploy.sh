@@ -529,11 +529,16 @@ GRAPH_RES_SP_ID=$(graph_call GET \
 if [ -z "$GRAPH_RES_SP_ID" ]; then
     echo "  WARNING: Could not resolve the Microsoft Graph service principal; skipping consent."
 else
+    # Check existence via the SP navigation property, NOT a $filter query.
+    # On a new tenant the $filter index lags replication, so a $filter lookup
+    # can return an empty list for minutes even though the grant exists — which
+    # previously made the loop poll forever and report a false failure. Listing
+    # the SP's oauth2PermissionGrants directly reflects the grant immediately.
     EXISTING_GRANT=$(graph_call GET \
-        "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP_ID' and resourceId eq '$GRAPH_RES_SP_ID'" 2>/dev/null \
+        "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
         | python3 -c "import sys,json
 try:
-    print((json.load(sys.stdin).get('value') or [{}])[0].get('id',''))
+    print('yes' if (json.load(sys.stdin).get('value') or []) else '')
 except Exception:
     print('')" 2>/dev/null || echo "")
     if [ -n "$EXISTING_GRANT" ]; then
@@ -549,10 +554,13 @@ except Exception:
         # the directory is initialized enough to accept the grant.
         GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
 
-        # Returns "yes" if a grant for this (client, resource) pair now exists.
+        # Returns "yes" if the app SP now has any oauth2PermissionGrant. Uses the
+        # SP navigation property rather than a $filter query: the $filter index
+        # lags replication on a new tenant and can report "no" long after the
+        # grant is actually created, causing false failures.
         grant_exists() {
             graph_call GET \
-                "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP_ID' and resourceId eq '$GRAPH_RES_SP_ID'" 2>/dev/null \
+                "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
                 | python3 -c "import sys,json
 try:
     print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')

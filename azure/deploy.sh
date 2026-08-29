@@ -280,13 +280,6 @@ if [ -z "$GRAPH_TOKEN" ]; then
     echo "  ERROR: Could not obtain a Microsoft Graph token for the external tenant."
     exit 1
 fi
-# Preserve the DELEGATED (signed-in user) Graph token. Later in Step 3 the
-# GRAPH_TOKEN variable is overwritten with the temporary app's CLIENT-CREDENTIALS
-# token (needed for Policy/EventListener application permissions). However, the
-# admin-consent oauth2PermissionGrant write reliably succeeds with the delegated
-# user token but not with the app-only token on a brand-new CIAM tenant, so we
-# keep the delegated token here and use it specifically for that consent step.
-GRAPH_USER_TOKEN="$GRAPH_TOKEN"
 
 # Resolve the tenant subdomain from its verified onmicrosoft.com domain when
 # not explicitly provided (Native Auth base URL needs the subdomain).
@@ -516,105 +509,114 @@ APP_SP_ID="$SP_EXISTS"
 # (consent_required) even though the username, password and flow are all valid.
 # We create an oauth2PermissionGrant (AllPrincipals) for the delegated OpenID
 # Connect scopes against Microsoft Graph. Idempotent: skip if one exists.
+#
+# A freshly created external (CIAM) tenant reports provisioningState=Succeeded
+# before its directory "organization" object is fully initialized. Writes in
+# that window fail with 404 Directory_ObjectNotFound
+# ("Unable to read the company information from the directory"). We therefore
+# (a) do NOT gate on GET /organization (that needs Organization.Read.All, which
+# the automation app lacks, so it 403s forever and the write is never tried),
+# and (b) treat the grant as successful whenever it EXISTS (checked before and
+# after the POST), never trusting the POST status alone — a retry that hits 409
+# Conflict still means the grant is present. Retry window: up to ~8min (48*10s).
 echo "  Granting admin consent to the app (OpenID Connect scopes)..."
-# Use the DELEGATED (signed-in user) token for the consent write. On a brand-new
-# CIAM tenant the app-only client-credentials token (currently in GRAPH_TOKEN)
-# does not reliably succeed at creating this oauth2PermissionGrant, whereas the
-# signed-in admin's delegated token does. Swap it in for this block only, then
-# restore so subsequent app-permission calls keep working.
-GRAPH_TOKEN_SAVED="$GRAPH_TOKEN"
-GRAPH_TOKEN="$GRAPH_USER_TOKEN"
 GRAPH_RES_SP_ID=$(graph_call GET \
     "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$GRAPH_MSGRAPH_APPID')" 2>/dev/null | json_get id)
-if [ -z "$GRAPH_RES_SP_ID" ]; then
-    echo "  WARNING: Could not resolve the Microsoft Graph service principal; skipping consent."
-else
-    # Check existence via the SP navigation property, NOT a $filter query.
-    # On a new tenant the $filter index lags replication, so a $filter lookup
-    # can return an empty list for minutes even though the grant exists — which
-    # previously made the loop poll forever and report a false failure. Listing
-    # the SP's oauth2PermissionGrants directly reflects the grant immediately.
-    EXISTING_GRANT=$(graph_call GET \
+
+# Returns non-empty when an oauth2PermissionGrant exists for our SP.
+#
+# We read the SP navigation property servicePrincipals/{id}/oauth2PermissionGrants
+# instead of the collection with $filter. On a freshly created tenant the
+# $filter index lags behind replication for minutes, so a filtered query
+# returns an empty list even when the grant already exists — which made the
+# old check report a false failure and burn the whole retry window. The
+# navigation property reflects the grant immediately.
+grant_exists() {
+    graph_call GET \
         "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
         | python3 -c "import sys,json
 try:
-    print('yes' if (json.load(sys.stdin).get('value') or []) else '')
+    print((json.load(sys.stdin).get('value') or [{}])[0].get('id',''))
 except Exception:
-    print('')" 2>/dev/null || echo "")
-    if [ -n "$EXISTING_GRANT" ]; then
-        echo "  Admin consent already present."
-    else
-        # A freshly created external (CIAM) tenant is not immediately ready for
-        # this write: the directory's company/organization object is still being
-        # provisioned, so the POST can fail with 404 Directory_ObjectNotFound
-        # ("Unable to read the company information from the directory") even
-        # though the tenant reports Succeeded. This is timing, not permissions.
-        # Retry until the directory is ready and the grant is created. Also wait
-        # for /organization to return a record first, which is the signal that
-        # the directory is initialized enough to accept the grant.
-        GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
+    print('')" 2>/dev/null || echo ""
+}
 
-        # Returns "yes" if the app SP now has any oauth2PermissionGrant. Uses the
-        # SP navigation property rather than a $filter query: the $filter index
-        # lags replication on a new tenant and can report "no" long after the
-        # grant is actually created, causing false failures.
-        grant_exists() {
-            graph_call GET \
-                "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
-                | python3 -c "import sys,json
-try:
-    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
-except Exception:
-    print('no')" 2>/dev/null || echo "no"
-        }
-
-        # Poll for up to ~8 minutes (48 x 10s). A freshly created CIAM tenant
-        # can take several minutes before its directory accepts this write, and
-        # 3 minutes was not always enough in practice, leaving consent unset and
-        # sign-in failing. 8 minutes covers the observed initialization delay
-        # while still fitting inside the one-command deploy.
-        CONSENT_OK=""
-        for attempt in $(seq 1 48); do
-            # Success if the grant already exists (e.g. an earlier POST in this
-            # loop actually landed and a later retry got 409 Conflict). Checking
-            # existence — not just POST success — avoids falsely reporting
-            # failure when consent is in fact present.
-            if [ "$(grant_exists)" = "yes" ]; then
+if [ -z "$GRAPH_RES_SP_ID" ]; then
+    echo "  WARNING: Could not resolve the Microsoft Graph service principal; skipping consent."
+else
+    GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
+    # Consent is created by POSTing the grant directly and verifying existence.
+    #
+    # We do NOT gate this on GET /organization: that requires the app-only
+    # Organization.Read.All permission (not granted to the automation app), so
+    # it returns 403 forever and the write is never attempted. Instead, POST
+    # directly and classify the HTTP status:
+    #   - transient (freshly created tenant still initializing): 404
+    #     Directory_ObjectNotFound, 429, 5xx  -> sleep and retry
+    #   - 409 Conflict: the grant already exists -> re-check existence
+    #   - hard failure: 400 / 401 / 403 -> log the body and stop retrying
+    # DelegatedPermissionGrant.ReadWrite.All is sufficient for this POST per the
+    # Graph docs; no additional Graph permission is needed here.
+    CONSENT_OK=""
+    CONSENT_FATAL=""
+    for _ in $(seq 1 48); do
+        # Already present (earlier attempt, or a prior run)? Done.
+        if [ -n "$(grant_exists)" ]; then
+            CONSENT_OK="yes"
+            break
+        fi
+        # POST the grant and capture HTTP status + body (last line = status).
+        RAW=$(curl -sS -w $'\n%{http_code}' -X POST \
+            "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" \
+            -H "Authorization: Bearer $GRAPH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$GRANT_BODY" 2>/dev/null || true)
+        HTTP_CODE="${RAW##*$'\n'}"
+        RESP="${RAW%$'\n'*}"
+        case "$HTTP_CODE" in
+            2*)
                 CONSENT_OK="yes"
                 break
-            fi
-            # Ensure the directory is initialized (company information readable)
-            # before attempting the write. A freshly created external (CIAM)
-            # tenant reports Succeeded before its organization object exists, so
-            # the POST can fail with 404 Directory_ObjectNotFound. This is
-            # timing, not permissions — so we poll and retry.
-            ORG_READY=$(graph_call GET "https://graph.microsoft.com/v1.0/organization" 2>/dev/null \
-                | python3 -c "import sys,json
-try:
-    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
-except Exception:
-    print('no')" 2>/dev/null || echo "no")
-            if [ "$ORG_READY" = "yes" ]; then
-                graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null 2>&1 || true
-                # Re-check existence rather than trusting the POST status: the
-                # grant may have been created even if this call returned 409/4xx.
-                if [ "$(grant_exists)" = "yes" ]; then
+                ;;
+            409)
+                # Already exists — confirm via the navigation property.
+                if [ -n "$(grant_exists)" ]; then
                     CONSENT_OK="yes"
                     break
                 fi
-            fi
-            sleep 10
-        done
-        if [ -n "$CONSENT_OK" ]; then
-            echo "  Admin consent granted."
-        else
-            echo "  WARNING: Failed to grant admin consent after retries; sign-in may fail with consent_required."
-        fi
+                ;;
+            404|429|5*)
+                # Directory still initializing / throttled / transient. The
+                # grant may still have landed, so re-check before waiting.
+                if [ -n "$(grant_exists)" ]; then
+                    CONSENT_OK="yes"
+                    break
+                fi
+                ;;
+            400|401|403)
+                echo "  ERROR: admin consent POST failed with HTTP $HTTP_CODE"
+                [ -n "$RESP" ] && echo "  Response: $(printf '%s' "$RESP" | head -c 500)"
+                CONSENT_FATAL="yes"
+                break
+                ;;
+            *)
+                # Unknown/empty status — treat as transient and re-check.
+                if [ -n "$(grant_exists)" ]; then
+                    CONSENT_OK="yes"
+                    break
+                fi
+                ;;
+        esac
+        sleep 10
+    done
+    if [ -n "$CONSENT_OK" ]; then
+        echo "  Admin consent granted."
+    elif [ -n "$CONSENT_FATAL" ]; then
+        echo "  WARNING: Admin consent could not be granted (see error above); sign-in may fail with consent_required."
+    else
+        echo "  WARNING: Failed to grant admin consent after retries; sign-in may fail with consent_required."
     fi
 fi
-# Restore the app-only (client-credentials) token for the remaining Step 3
-# calls (Email OTP policy, user flow), which require application permissions.
-GRAPH_TOKEN="$GRAPH_TOKEN_SAVED"
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
 # Email one-time passcode must be enabled tenant-wide so native credential

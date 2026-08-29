@@ -280,6 +280,13 @@ if [ -z "$GRAPH_TOKEN" ]; then
     echo "  ERROR: Could not obtain a Microsoft Graph token for the external tenant."
     exit 1
 fi
+# Preserve the DELEGATED (signed-in user) Graph token. Later in Step 3 the
+# GRAPH_TOKEN variable is overwritten with the temporary app's CLIENT-CREDENTIALS
+# token (needed for Policy/EventListener application permissions). However, the
+# admin-consent oauth2PermissionGrant write reliably succeeds with the delegated
+# user token but not with the app-only token on a brand-new CIAM tenant, so we
+# keep the delegated token here and use it specifically for that consent step.
+GRAPH_USER_TOKEN="$GRAPH_TOKEN"
 
 # Resolve the tenant subdomain from its verified onmicrosoft.com domain when
 # not explicitly provided (Native Auth base URL needs the subdomain).
@@ -510,6 +517,13 @@ APP_SP_ID="$SP_EXISTS"
 # We create an oauth2PermissionGrant (AllPrincipals) for the delegated OpenID
 # Connect scopes against Microsoft Graph. Idempotent: skip if one exists.
 echo "  Granting admin consent to the app (OpenID Connect scopes)..."
+# Use the DELEGATED (signed-in user) token for the consent write. On a brand-new
+# CIAM tenant the app-only client-credentials token (currently in GRAPH_TOKEN)
+# does not reliably succeed at creating this oauth2PermissionGrant, whereas the
+# signed-in admin's delegated token does. Swap it in for this block only, then
+# restore so subsequent app-permission calls keep working.
+GRAPH_TOKEN_SAVED="$GRAPH_TOKEN"
+GRAPH_TOKEN="$GRAPH_USER_TOKEN"
 GRAPH_RES_SP_ID=$(graph_call GET \
     "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$GRAPH_MSGRAPH_APPID')" 2>/dev/null | json_get id)
 if [ -z "$GRAPH_RES_SP_ID" ]; then
@@ -590,6 +604,9 @@ except Exception:
         fi
     fi
 fi
+# Restore the app-only (client-credentials) token for the remaining Step 3
+# calls (Email OTP policy, user flow), which require application permissions.
+GRAPH_TOKEN="$GRAPH_TOKEN_SAVED"
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
 # Email one-time passcode must be enabled tenant-wide so native credential

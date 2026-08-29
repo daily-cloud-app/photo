@@ -13,9 +13,10 @@
 # Prerequisites:
 #   - Azure CLI (az) logged in:  az login
 #   - zip, curl, python3 (pre-installed in Cloud Shell)
-#   - An existing Microsoft Entra *external* tenant (see README). Creating an
-#     external tenant is not scriptable end-to-end, so its subdomain + id are
-#     taken as input; everything after that is automated.
+#   - By default (CREATE_TENANT=true) the script creates a new Microsoft Entra
+#     *external* (CIAM) tenant for you via the ARM REST API — no pre-existing
+#     tenant is required. To reuse one instead, pass ENTRA_TENANT_ID=<guid>
+#     (creation is then skipped). Everything after tenant selection is automated.
 #
 # Usage:
 #   chmod +x deploy.sh
@@ -279,6 +280,13 @@ if [ -z "$GRAPH_TOKEN" ]; then
     echo "  ERROR: Could not obtain a Microsoft Graph token for the external tenant."
     exit 1
 fi
+# Preserve the DELEGATED (signed-in user) Graph token. Later in Step 3 the
+# GRAPH_TOKEN variable is overwritten with the temporary app's CLIENT-CREDENTIALS
+# token (needed for Policy/EventListener application permissions). However, the
+# admin-consent oauth2PermissionGrant write reliably succeeds with the delegated
+# user token but not with the app-only token on a brand-new CIAM tenant, so we
+# keep the delegated token here and use it specifically for that consent step.
+GRAPH_USER_TOKEN="$GRAPH_TOKEN"
 
 # Resolve the tenant subdomain from its verified onmicrosoft.com domain when
 # not explicitly provided (Native Auth base URL needs the subdomain).
@@ -326,6 +334,11 @@ role_id() { az ad sp show --id "$GRAPH_MSGRAPH_APPID" --query "appRoles[?value==
 ROLE_POLICY=$(role_id "Policy.ReadWrite.AuthenticationMethod")
 ROLE_FLOW=$(role_id "EventListener.ReadWrite.All")
 ROLE_APP=$(role_id "Application.ReadWrite.All")
+# Required to create the oauth2PermissionGrant (tenant-wide admin consent) for
+# the app in Step 3c. Application.ReadWrite.All does NOT cover writing delegated
+# grants, so without this role that POST fails with 403 Authorization_RequestDenied
+# and sign-in later fails with consent_required.
+ROLE_GRANT=$(role_id "DelegatedPermissionGrant.ReadWrite.All")
 
 # Grant admin consent by assigning the app roles to the automation SP.
 grant_role() {
@@ -338,6 +351,7 @@ grant_role() {
 grant_role "$ROLE_POLICY"
 grant_role "$ROLE_FLOW"
 grant_role "$ROLE_APP"
+grant_role "$ROLE_GRANT"
 
 # Short-lived client secret for the client-credentials grant.
 AUTO_SECRET=$(az ad app credential reset --id "$GRAPH_AUTOMATION_APPID" --append \
@@ -367,16 +381,22 @@ for _ in $(seq 1 12); do
         -d "client_secret=$AUTO_SECRET" \
         -d "grant_type=client_credentials" \
         | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
-    # Verify the token actually carries the required app roles before using it.
+    # Verify the token actually carries ALL required app roles before using it.
+    # We must wait for every role to propagate — in particular
+    # DelegatedPermissionGrant.ReadWrite.All, which the admin-consent step needs.
+    # Otherwise the token can appear "ready" with only some roles and the later
+    # oauth2PermissionGrants POST fails with 403.
     if [ -n "$GRAPH_TOKEN" ]; then
         HAS_ROLE=$(echo "$GRAPH_TOKEN" | cut -d. -f2 | tr '_-' '/+' | \
             python3 -c "
 import sys,base64,json
+required={'Policy.ReadWrite.AuthenticationMethod','EventListener.ReadWrite.All','Application.ReadWrite.All','DelegatedPermissionGrant.ReadWrite.All'}
 s=sys.stdin.read().strip()
 s+='='*(-len(s)%4)
 try:
     d=json.loads(base64.b64decode(s))
-    print('yes' if 'Policy.ReadWrite.AuthenticationMethod' in (d.get('roles') or []) else 'no')
+    roles=set(d.get('roles') or [])
+    print('yes' if required.issubset(roles) else 'no')
 except Exception:
     print('no')" 2>/dev/null || echo "no")
         [ "$HAS_ROLE" = "yes" ] && break
@@ -465,18 +485,25 @@ sp_object_id() {
 }
 
 echo "  Ensuring the app has a service principal..."
+# A freshly created app registration is eventually consistent across Graph
+# replicas: the servicePrincipals POST can return 404 ("application not found")
+# for a while after the app is created. Previously we attempted the create only
+# once and then merely polled with GET, so if that single POST hit the
+# replication gap the SP was never created and the wait always timed out.
+# Instead, retry BOTH the create and the lookup for up to ~3 minutes.
 SP_EXISTS="$(sp_object_id)"
 if [ -z "$SP_EXISTS" ]; then
     echo "  Creating service principal..."
-    graph_call POST "https://graph.microsoft.com/v1.0/servicePrincipals" \
-        "{\"appId\":\"$ENTRA_CLIENT_ID\"}" >/dev/null 2>&1 || true
+    for _ in $(seq 1 36); do
+        SP_EXISTS="$(sp_object_id)"
+        [ -n "$SP_EXISTS" ] && break
+        graph_call POST "https://graph.microsoft.com/v1.0/servicePrincipals" \
+            "{\"appId\":\"$ENTRA_CLIENT_ID\"}" >/dev/null 2>&1 || true
+        SP_EXISTS="$(sp_object_id)"
+        [ -n "$SP_EXISTS" ] && break
+        sleep 5
+    done
 fi
-# Wait for the service principal to be resolvable before creating the flow.
-for _ in $(seq 1 12); do
-    SP_EXISTS="$(sp_object_id)"
-    [ -n "$SP_EXISTS" ] && break
-    sleep 5
-done
 if [ -z "$SP_EXISTS" ]; then
     echo "  ERROR: The app's service principal did not become available."
     exit 1
@@ -490,29 +517,104 @@ APP_SP_ID="$SP_EXISTS"
 # We create an oauth2PermissionGrant (AllPrincipals) for the delegated OpenID
 # Connect scopes against Microsoft Graph. Idempotent: skip if one exists.
 echo "  Granting admin consent to the app (OpenID Connect scopes)..."
+# Use the DELEGATED (signed-in user) token for the consent write. On a brand-new
+# CIAM tenant the app-only client-credentials token (currently in GRAPH_TOKEN)
+# does not reliably succeed at creating this oauth2PermissionGrant, whereas the
+# signed-in admin's delegated token does. Swap it in for this block only, then
+# restore so subsequent app-permission calls keep working.
+GRAPH_TOKEN_SAVED="$GRAPH_TOKEN"
+GRAPH_TOKEN="$GRAPH_USER_TOKEN"
 GRAPH_RES_SP_ID=$(graph_call GET \
     "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$GRAPH_MSGRAPH_APPID')" 2>/dev/null | json_get id)
 if [ -z "$GRAPH_RES_SP_ID" ]; then
     echo "  WARNING: Could not resolve the Microsoft Graph service principal; skipping consent."
 else
+    # Check existence via the SP navigation property, NOT a $filter query.
+    # On a new tenant the $filter index lags replication, so a $filter lookup
+    # can return an empty list for minutes even though the grant exists — which
+    # previously made the loop poll forever and report a false failure. Listing
+    # the SP's oauth2PermissionGrants directly reflects the grant immediately.
     EXISTING_GRANT=$(graph_call GET \
-        "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP_ID' and resourceId eq '$GRAPH_RES_SP_ID'" 2>/dev/null \
+        "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
         | python3 -c "import sys,json
 try:
-    print((json.load(sys.stdin).get('value') or [{}])[0].get('id',''))
+    print('yes' if (json.load(sys.stdin).get('value') or []) else '')
 except Exception:
     print('')" 2>/dev/null || echo "")
     if [ -n "$EXISTING_GRANT" ]; then
         echo "  Admin consent already present."
     else
+        # A freshly created external (CIAM) tenant is not immediately ready for
+        # this write: the directory's company/organization object is still being
+        # provisioned, so the POST can fail with 404 Directory_ObjectNotFound
+        # ("Unable to read the company information from the directory") even
+        # though the tenant reports Succeeded. This is timing, not permissions.
+        # Retry until the directory is ready and the grant is created. Also wait
+        # for /organization to return a record first, which is the signal that
+        # the directory is initialized enough to accept the grant.
         GRANT_BODY="{\"clientId\":\"$APP_SP_ID\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_RES_SP_ID\",\"scope\":\"openid offline_access profile\"}"
-        if graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null; then
+
+        # Returns "yes" if the app SP now has any oauth2PermissionGrant. Uses the
+        # SP navigation property rather than a $filter query: the $filter index
+        # lags replication on a new tenant and can report "no" long after the
+        # grant is actually created, causing false failures.
+        grant_exists() {
+            graph_call GET \
+                "https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP_ID/oauth2PermissionGrants" 2>/dev/null \
+                | python3 -c "import sys,json
+try:
+    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no"
+        }
+
+        # Poll for up to ~8 minutes (48 x 10s). A freshly created CIAM tenant
+        # can take several minutes before its directory accepts this write, and
+        # 3 minutes was not always enough in practice, leaving consent unset and
+        # sign-in failing. 8 minutes covers the observed initialization delay
+        # while still fitting inside the one-command deploy.
+        CONSENT_OK=""
+        for attempt in $(seq 1 48); do
+            # Success if the grant already exists (e.g. an earlier POST in this
+            # loop actually landed and a later retry got 409 Conflict). Checking
+            # existence — not just POST success — avoids falsely reporting
+            # failure when consent is in fact present.
+            if [ "$(grant_exists)" = "yes" ]; then
+                CONSENT_OK="yes"
+                break
+            fi
+            # Ensure the directory is initialized (company information readable)
+            # before attempting the write. A freshly created external (CIAM)
+            # tenant reports Succeeded before its organization object exists, so
+            # the POST can fail with 404 Directory_ObjectNotFound. This is
+            # timing, not permissions — so we poll and retry.
+            ORG_READY=$(graph_call GET "https://graph.microsoft.com/v1.0/organization" 2>/dev/null \
+                | python3 -c "import sys,json
+try:
+    print('yes' if (json.load(sys.stdin).get('value') or []) else 'no')
+except Exception:
+    print('no')" 2>/dev/null || echo "no")
+            if [ "$ORG_READY" = "yes" ]; then
+                graph_call POST "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" "$GRANT_BODY" >/dev/null 2>&1 || true
+                # Re-check existence rather than trusting the POST status: the
+                # grant may have been created even if this call returned 409/4xx.
+                if [ "$(grant_exists)" = "yes" ]; then
+                    CONSENT_OK="yes"
+                    break
+                fi
+            fi
+            sleep 10
+        done
+        if [ -n "$CONSENT_OK" ]; then
             echo "  Admin consent granted."
         else
-            echo "  WARNING: Failed to grant admin consent; sign-in may fail with consent_required."
+            echo "  WARNING: Failed to grant admin consent after retries; sign-in may fail with consent_required."
         fi
     fi
 fi
+# Restore the app-only (client-credentials) token for the remaining Step 3
+# calls (Email OTP policy, user flow), which require application permissions.
+GRAPH_TOKEN="$GRAPH_TOKEN_SAVED"
 
 # ── 3d. Enable Email OTP tenant policy (required for SSPR) ──
 # Email one-time passcode must be enabled tenant-wide so native credential
@@ -674,6 +776,15 @@ echo ""
 # ============================================================
 echo "[4/7] Creating resource group and deploying Bicep..."
 
+# OAuth scopes the backend requests when signing users in. The default
+# "openid offline_access" yields a token whose audience is Microsoft Graph,
+# which the API cannot validate against the tenant JWKS (Graph tokens use a
+# special signature), so every authenticated call fails with 401. Requesting
+# "<clientId>/.default" makes Entra issue a token whose audience is THIS app,
+# which the backend can validate (signature + issuer). Without this, sign-in
+# succeeds but uploads and all other authenticated endpoints return 401.
+ENTRA_SCOPES="${ENTRA_SCOPES:-openid offline_access ${ENTRA_CLIENT_ID}/.default}"
+
 # SUB_ARG (defined in Step 1) pins the subscription: an external-tenant login
 # in Step 3 may have changed the active CLI context.
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" "${SUB_ARG[@]}" --output none
@@ -687,6 +798,7 @@ DEPLOYMENT_OUTPUT=$(az deployment group create \
         entraTenantSubdomain="$ENTRA_TENANT_SUBDOMAIN" \
         entraTenantId="$ENTRA_TENANT_ID" \
         entraClientId="$ENTRA_CLIENT_ID" \
+        entraScopes="$ENTRA_SCOPES" \
     --query properties.outputs \
     --output json)
 

@@ -61,6 +61,9 @@ You can customize the deployment by setting environment variables before running
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
 
+> [!WARNING]
+> Deleting the resource group **permanently deletes all photos stored in Blob Storage** along with every other resource in the group. Back up any data you need before proceeding.
+
 ```bash
 az group delete --name daily-cloud-photo-rg --yes --no-wait
 ```
@@ -167,6 +170,9 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 ### リソースの削除
 
 [![Open in Cloud Shell](https://img.shields.io/badge/Azure-Cloud_Shell-blue?logo=microsoftazure)](https://shell.azure.com)
+
+> [!WARNING]
+> リソースグループを削除すると、グループ内の全リソースと共に **Blob Storage 上の写真もすべて削除されます**。必要なデータは事前にバックアップしてください。
 
 ```bash
 az group delete --name daily-cloud-photo-rg --yes --no-wait

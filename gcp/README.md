@@ -69,6 +69,7 @@ To keep the project (delete the Terraform resources and the state bucket):
 
 ```bash
 gcloud config set project daily-cloud-photo
+gcloud auth application-default login   # required before set-quota-project / terraform
 gcloud auth application-default set-quota-project daily-cloud-photo
 cd terraform
 terraform init -reconfigure \
@@ -194,6 +195,7 @@ These are examples only — not an exhaustive list. Evaluate your own requiremen
 
 ```bash
 gcloud config set project daily-cloud-photo
+gcloud auth application-default login   # required before set-quota-project / terraform
 gcloud auth application-default set-quota-project daily-cloud-photo
 cd terraform
 terraform init -reconfigure \

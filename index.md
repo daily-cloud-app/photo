@@ -29,6 +29,9 @@ The app provides the client application only. You build and manage the cloud env
 - **Labels** — Organize and find photos using labels
 - **Sharing** — Share photos with other users in the same cloud environment by label
 
+Sample setup guides for several cloud providers are available in the infrastructure repository:
+https://github.com/daily-cloud-app/photo
+
 ### Getting started
 
 1. Prepare a supported cloud environment.
@@ -61,6 +64,9 @@ For questions or issues, please use [GitHub Issues](https://github.com/daily-clo
 - **インポート** — クラウド上の写真を別の端末へ取り込み
 - **ラベル** — ラベルを使って写真を整理・検索
 - **共有** — 同じクラウド内の他のユーザーとラベル単位で写真を共有
+
+いくつかのクラウドプロバイダー向けに、サンプルの環境構築手順を公開しています。
+https://github.com/daily-cloud-app/photo
 
 ### 使い方
 

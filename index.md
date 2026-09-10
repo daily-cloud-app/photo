@@ -31,7 +31,7 @@ The app provides the client application only. You build and manage the cloud env
 
 Sample setup guides for several cloud providers are available in the infrastructure repository:
 
-- https://github.com/daily-cloud-app/photo
+- [https://github.com/daily-cloud-app/photo](https://github.com/daily-cloud-app/photo)
 
 ### Getting started
 
@@ -67,7 +67,7 @@ For questions or issues, please use [GitHub Issues](https://github.com/daily-clo
 - **共有** — 同じクラウド内の他のユーザーとラベル単位で写真を共有
 
 いくつかのクラウドプロバイダー向けに、サンプルの環境構築手順を公開しています。
-- https://github.com/daily-cloud-app/photo
+- [https://github.com/daily-cloud-app/photo](https://github.com/daily-cloud-app/photo)
 
 ### 使い方
 

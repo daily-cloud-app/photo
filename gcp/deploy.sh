@@ -204,6 +204,7 @@ gcloud services enable \
     serviceusage.googleapis.com \
     cloudresourcemanager.googleapis.com \
     storage.googleapis.com \
+    firestore.googleapis.com \
     --project="${PROJECT_ID}" \
     --quiet
 echo -e "  ${GREEN}OK APIs enabled${NC}"
@@ -245,6 +246,24 @@ if ! "$TF" state list 2>/dev/null | grep -qxF 'google_identity_platform_config.d
         echo -e "  ${GREEN}Imported existing Identity Platform config into state${NC}"
     else
         echo -e "  No existing config to import; it will be created."
+    fi
+fi
+
+# ── Firestore: import the default database if it already exists ──
+# Firebase or an earlier deployment may have created the per-project default
+# database before Terraform was introduced. Import it to avoid a 409
+# "Database already exists" error. On a new project the import fails harmlessly
+# and Terraform creates the database during apply.
+if ! "$TF" state list 2>/dev/null | grep -qxF 'google_firestore_database.default'; then
+    echo -e "  Checking for an existing Firestore default database..."
+    if "$TF" import -input=false \
+        -var="project_id=${PROJECT_ID}" \
+        -var="region=${REGION}" \
+        google_firestore_database.default \
+        "projects/${PROJECT_ID}/databases/(default)" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}Imported existing Firestore default database into state${NC}"
+    else
+        echo -e "  No existing database to import; it will be created."
     fi
 fi
 
